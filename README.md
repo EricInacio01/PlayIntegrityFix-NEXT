@@ -1,6 +1,8 @@
-# Play Integrity Fix
+# PlayIntegrityFix NEXT
 
 This module tries to fix Play Integrity and SafetyNet verdicts to get a valid attestation.
+
+It is a fork of PlayIntegrityFix, by chiteroman. 
 
 ## NOTE
 
