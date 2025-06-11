@@ -6,6 +6,10 @@
 [![GitHub Releases](https://img.shields.io/github/downloads/EricInacio01/PlayIntegrityFix-NEXT/latest/total?label=Downloads%20%28Latest%20Release%29&color=blue&style=flat)](https://github.com/EricInacio01/PlayIntegrityFix-NEXT/releases/latest)
 [![GitHub All Releases](https://img.shields.io/github/downloads/EricInacio01/PlayIntegrityFix-NEXT/total?label=Total%20Downloads%20%28All%20Releases%29&color=brightgreen&style=flat)](https://github.com/EricInacio01/PlayIntegrityFix-NEXT/releases)
 
+> WARNING!!!!! ⚠️ some Android 14+ devices may experience crashes due to module implementations.
+
+---
+
 ## ⚠️ NOTES
 
 This fork is not intended to achieve STRONG_INTEGRITY or even hide the root. There are other, more effective solutions if you are aiming for that. We do not sell or send Keyboxes with valid STRONG, so if you see someone impersonating this module, be suspicious.
