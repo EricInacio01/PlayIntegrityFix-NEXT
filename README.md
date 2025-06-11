@@ -61,3 +61,5 @@ Be happy not because the original project is over, but because it happened. A li
 - [PlayIntegrityFIX (Site is down)](https://github.com/chiteroman/PlayIntegrityFix) by [chiteroman](https://github.com/chiteroman) author of original PIF module.
 - [kdrag0n](https://github.com/kdrag0n/safetynet-fix) & [Displax](https://github.com/Displax/safetynet-fix) for the original idea.
 - [osm0sis](https://github.com/osm0sis) for his original [autopif2.sh](https://github.com/osm0sis/PlayIntegrityFork/blob/main/module/autopif2.sh) script, and [backslashxx](https://github.com/backslashxx) & [KOWX712](https://github.com/KOWX712) for improving it ([action.sh](https://github.com/chiteroman/PlayIntegrityFix/blob/main/module/action.sh)).
+- [Update Security Patch](https://github.com/Doze-off/update_security_patch) by Papacuz
+- [TrickyStore](https://github.com/5ec1cff/TrickyStore) by 5ec1cff
