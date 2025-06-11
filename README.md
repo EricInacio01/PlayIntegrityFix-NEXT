@@ -8,7 +8,7 @@
 
 ## ⚠️ NOTES
 
-This fork is not intended to achieve STRONG_INTEGRITY or even hide root. There are other, more effective solutions if you are looking for this goal. We do not send or ship any Keyboxes, as our goal is to guarantee users a valid attestation without such means.
+This fork is not intended to achieve STRONG_INTEGRITY or even hide the root. There are other, more effective solutions if you are aiming for that. We do not sell or send Keyboxes with valid STRONG, so if you see someone impersonating this module, be suspicious.
 
 Some devices running ***>Android 14+*** may experience crashes or failures in the PlayStore due to native implementations such as `SpoofVendingSDK` and others, so if you're experiencing these problems, be considerate changing the `pif.json file`:
 
