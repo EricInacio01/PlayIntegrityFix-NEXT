@@ -1,0 +1,303 @@
+@import url('https://mui.kernelsu.org/mmrl/insets.css');
+@import url('https://mui.kernelsu.org/mmrl/colors.css');
+
+:root {
+    /* window inset */
+    --top-inset: var(--window-inset-top, 0px);
+    --bottom-inset: var(--window-inset-bottom, 0px);
+
+    /* Background colors */
+    --bg-primary: var(--background, #F5F5F5);
+    --bg-secondary: var(--tonalSurface, #FFFFFF);
+    --bg-input: var(--surfaceBright, #FAFAFA);
+
+    /* Text colors */
+    --text-constant: var(--onSurface, #212121);
+    --text-primary: var(--onSurface, #212121);
+    --text-muted: #757575;
+
+    /* Border colors */
+    --border-color: var(--outlineVariant, #E0E0E0);
+
+    /* Button colors */
+    --btn-primary: var(--primary, #6200EE);
+    --btn-primary-text: var(--onPrimary, #FFFFFF);
+    
+    /* Rainbow colors */
+    --rainbow-red: #ff0000;
+    --rainbow-orange: #ff7f00;
+    --rainbow-yellow: #ffff00;
+    --rainbow-green: #00ff00;
+    --rainbow-blue: #0000ff;
+    --rainbow-indigo: #4b0082;
+    --rainbow-violet: #9400d3;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        /* Background colors */
+        --bg-primary: var(--background, #121212);
+        --bg-secondary: var(--tonalSurface, #1E1E1E);
+        --bg-input: var(--surfaceBright, #242424);
+
+        /* Text colors */
+        --text-constant: var(--onSurface, #E0E0E0);
+        --text-primary: var(--onSurface, #E0E0E0);
+        --text-muted: #BDBDBD;
+
+        /* Border colors */
+        --border-color: var(--outlineVariant, #424242);
+    }
+}
+
+/* Rainbow border animation */
+.rainbow-border {
+    position: relative;
+    width: calc(85vw + 30px + 8px);
+    max-width: 808px;
+    margin: 4px auto;
+    padding: 4px;
+    border-radius: 24px;
+    background: linear-gradient(
+        90deg, 
+        var(--rainbow-red),
+        var(--rainbow-orange),
+        var(--rainbow-yellow),
+        var(--rainbow-green),
+        var(--rainbow-blue),
+        var(--rainbow-indigo),
+        var(--rainbow-violet),
+        var(--rainbow-red)
+    );
+    background-size: 400% 100%;
+    animation: rainbow-animation 3s linear infinite;
+    box-sizing: border-box;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes rainbow-animation {
+    0% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+body {
+    font-family: 'Roboto', sans-serif;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    padding-top: var(--top-inset);
+    padding-bottom: var(--bottom-inset);
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    box-sizing: border-box;
+}
+
+.content {
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: calc(100vh - var(--top-inset) - var(--bottom-inset) - 8px);
+    box-sizing: border-box;
+    width: 100%;
+    border-radius: 20px;
+    background-color: var(--bg-primary);
+    overflow: hidden;
+}
+
+.header {
+    user-select: none;
+    margin-bottom: 10px;
+    padding-top: 12px;
+}
+
+.header h3 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0;
+}
+
+.button-box {
+    width: calc(85vw + 30px);
+    max-width: 800px;
+    flex-shrink: 0;
+    background-color: var(--bg-secondary);
+    border: none;
+    border-radius: 20px;
+    box-sizing: border-box;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.toggle-list {
+    display: flex;
+    align-items: center;
+    background-color: var(--bg-secondary);
+    min-height: 42px;
+    padding: 8px 16px;
+    white-space: nowrap;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s ease;
+}
+
+.toggle-list:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.toggle-list:last-child {
+    border-bottom: none;
+}
+
+.advanced-option {
+    display: none;
+}
+
+#advanced {
+    justify-content: center;
+}
+
+#advanced span {
+    font-weight: normal;
+}
+
+.toggle-text {
+    font-size: 14px;
+    font-weight: 500;
+    white-space: wrap;
+    max-width: calc(100% - 70px);
+    user-select: none;
+    letter-spacing: -0.2px;
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    margin-left: auto;
+    width: 36px;
+    height: 20px;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--border-color);
+    transition: .4s;
+    border-radius: 20px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+input:checked + .slider {
+    background-color: var(--btn-primary);
+}
+
+input:checked + .slider:before {
+    transform: translateX(16px);
+}
+
+.output-terminal {
+    width: calc(85vw + 30px);
+    max-width: 800px;
+    flex-grow: 1;
+    background-color: var(--bg-input);
+    box-sizing: border-box;
+    border-radius: 20px;
+    box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.08);
+    margin-top: 15px;
+    overflow: hidden;
+}
+
+.output-terminal-header {
+    display: flex;
+    padding: 8px 12px;
+    font-size: 13px;
+    justify-content: space-between;
+    background-color: var(--bg-secondary);
+    color: var(--text-muted);
+    user-select: none;
+    font-weight: 500;
+}
+
+.clear-terminal {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.clear-terminal:hover {
+    opacity: 0.8;
+}
+
+.clear-terminal svg {
+    fill: var(--text-muted);
+    margin-right: 4px;
+}
+
+.clear-terminal-text {
+    font-size: 13px;
+}
+
+.output-terminal-content {
+    font-family: 'Fira Code', 'Courier New', monospace;
+    font-size: 13px;
+    padding: 8px;
+    width: calc(100% - 16px);
+    height: calc(100% - 40px);
+    overflow-y: auto;
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    line-height: 1.4;
+}
+
+.ripple-element {
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.ripple {
+    position: absolute;
+    border-radius: 50%;
+    transform: scale(0);
+    opacity: 1;
+    animation: ripple-animation ease-out forwards;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0.1);
+}
+
+@keyframes ripple-animation {
+    to {
+        transform: scale(3);
+        opacity: 0;
+    }
+}

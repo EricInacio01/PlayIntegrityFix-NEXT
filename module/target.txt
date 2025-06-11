@@ -1,0 +1,10 @@
+android
+com.android.vending!
+com.google.android.contactkeys!
+com.google.android.gms!
+com.google.android.safetycore!
+com.openai.chatgpt!
+com.whatsapp!
+icu.nullptr.nativetest
+io.github.vvb2060.keyattestation
+io.github.vvb2060.mahoshojo

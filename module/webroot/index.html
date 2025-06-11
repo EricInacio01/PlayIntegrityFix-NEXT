@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Play Integrity Fix</title>
+    <link rel="stylesheet" href="styles.css" type="text/css">
+    <link rel="stylesheet" type="text/css" href="/mmrl/insets.css" />
+    <script type="module" crossorigin src="scripts.js"></script>
+</head>
+<body>
+    <div class="rainbow-border">
+        <div class="content">
+            <div class="header">
+                <h3>
+                    PlayIntegrityFix NEXT
+                    <span id="version-text"></span>
+                </h3>
+            </div>
+            <div class="button-box">
+                <div class="toggle-list ripple-element" id="fetch">
+                    <span class="toggle-text">Fetch pif.json</span>
+                </div>
+                <div class="toggle-list ripple-element" id="preview-fp-toggle-container">
+                    <span class="toggle-text">Use preview fingerprint</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-preview-fp" disabled>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-list ripple-element" id="sdk-vending-toggle-container">
+                    <span class="toggle-text">Spoof sdk version to Play Store</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-sdk-vending" disabled>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-list advanced-option ripple-element" id="spoofProvider-toggle-container">
+                    <span class="toggle-text">Spoof Provider</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-spoofProvider" disabled>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-list advanced-option ripple-element" id="spoofProps-toggle-container">
+                    <span class="toggle-text">Spoof Props</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-spoofProps" disabled>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-list advanced-option ripple-element" id="spoofSignature-toggle-container">
+                    <span class="toggle-text">Spoof Signature</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-spoofSignature" disabled>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-list advanced-option ripple-element" id="debug-toggle-container">
+                    <span class="toggle-text">Debug</span>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-debug" disabled>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="toggle-list ripple-element" id="advanced">
+                    <span class="toggle-text">Advanced</span>
+                </div>
+            </div>
+            <div class="output-terminal">
+                <div class="output-terminal-header">
+                    <span>output</span>
+                    <div class="clear-terminal">
+                        <svg xmlns="http://www.w3.org/2000/svg" height="14px" viewBox="0 -960 960 960" width="14px" fill="#ccc"><path d="M280-120q-33 0-56.5-23.5T200-200v-520h-40v-80h200v-40h240v40h200v80h-40v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM360-280h80v-360h-80v360Zm160 0h80v-360h-80v360ZM280-720v520-520Z" /></svg>
+                        <span class="clear-terminal-text">clear</span>
+                    </div>
+                </div>
+                <div class="output-terminal-content"></div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
