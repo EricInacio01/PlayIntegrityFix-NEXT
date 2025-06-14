@@ -1,5 +1,5 @@
 android
-com.android.vending!
+com.google.android.apps.walletnfcrel!
 com.google.android.contactkeys!
 com.google.android.gms!
 com.google.android.safetycore!

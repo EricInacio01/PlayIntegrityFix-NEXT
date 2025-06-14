@@ -1,5 +1,6 @@
 id=playintegrityfix
-name=PlayIntegrityFix NEXT
-version=v1.0-next 
+name=PlayIntegrityFix-NEXT 
+version=v1.5
+versionCode=1
 author=@ericinacio
-description=This module tries to correct the new PlayIntegrity verdicts.
+description=This fork aims to achieve valid attestation on devices that have the new PlayIntegrity API rules.

@@ -9,11 +9,11 @@ FORCE_PREVIEW=1
 TEMPDIR="$MODDIR/temp" #fallback
 [ -w /sbin ] && TEMPDIR="/sbin/playintegrityfix"
 [ -w /debug_ramdisk ] && TEMPDIR="/debug_ramdisk/playintegrityfix"
-[ -w /dev ] && TEMPDIR="/dev/"
+[ -w /dev ] && TEMPDIR="/dev/playintegrityfix"
 mkdir -p "$TEMPDIR"
 cd "$TEMPDIR"
 
-echo "[+] PIF Next' $version"
+echo "[+] PlayIntegrityFix $version"
 echo "[+] $(basename "$0")"
 printf "\n\n"
 

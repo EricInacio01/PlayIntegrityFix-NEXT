@@ -1,12 +1,10 @@
 MODPATH="${0%/*}"
 . "$MODPATH"/common_func.sh
 
-# New Security Patch 
-# go ahead anyway, if customize.sh doesn't work or ts is not installed 
+# Security Patches
 novo_patch="2025-06-05"
 resetprop -n ro.build.version.security_patch "$novo_patch"
 resetprop -n ro.vendor.build.security_patch "$novo_patch"
-
 
 # Conditional sensitive properties
 

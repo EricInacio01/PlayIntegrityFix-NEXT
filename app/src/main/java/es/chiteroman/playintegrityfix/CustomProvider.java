@@ -4,18 +4,18 @@ import java.security.Provider;
 
 public final class CustomProvider extends Provider {
 
-    public CustomProvider(Provider provider) {
+    CustomProvider(Provider provider) {
         super(provider.getName(), provider.getVersion(), provider.getInfo());
         putAll(provider);
-        put("KeyStore.AndroidKeyStore", CustomKeyStoreSpi.class.getName());
+        this.put("KeyStore.AndroidKeyStore", CustomKeyStoreSpi.class.getName());
     }
 
     @Override
     public synchronized Service getService(String type, String algorithm) {
-        EntryPoint.LOG(String.format("Service: '%s' | Algorithm: '%s'", type, algorithm));
-
-        new Thread(EntryPoint::spoofFields).start();
-
+        if (EntryPoint.getVerboseLogs() > 2) EntryPoint.LOG(String.format("Service: Caller type '%s' with algorithm '%s'", type, algorithm));
+        if (EntryPoint.getSpoofBuildEnabled() > 0) {
+            if (type.equals("KeyStore")) EntryPoint.spoofDevice();
+        }
         return super.getService(type, algorithm);
     }
 }

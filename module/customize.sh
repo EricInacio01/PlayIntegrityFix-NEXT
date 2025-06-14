@@ -12,6 +12,11 @@ if [ "$API" -lt 26 ]; then
     abort "! You can't use this module on Android < 8.0"
 fi
 
+# Android 14 warning
+if [ "$API" -eq 34 ]; then
+    ui_print "  WARNING!!! Your device has Android 14 or higher, which means that there may be unexpected crashes in the Play Store due to SpoofVendingSdk implementations. Thank you for your understanding."
+fi
+
 check_zygisk() {
     local ZYGISK_MODULE="/data/adb/modules/zygisksu"
     local REZYGISK_MODULE="/data/adb/modules/rezygisk"
@@ -61,6 +66,15 @@ if [ -d "/data/adb/modules/MagiskHidePropsConf" ]; then
     ui_print "! WARNING, MagiskHidePropsConf module may cause issues with PIF."
 fi
 
+# Check for Tricky Store
+ui_print "  — Detecting Tricky Store, please wait..."
+TRICKYSTORE_PATH="/data/adb/tricky_store/"
+if [ ! -d "$TRICKYSTORE_PATH" ]; then
+    ui_print "  [!] Tricky Store has not been detected on your device."
+    ui_print "  [!] This module requires Tricky Store to function properly."
+    abort "  [!] Installation cancelled. Please install Tricky Store first."
+fi
+
 # Preserve previous setting
 spoofConfig="spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk"
 for config in $spoofConfig; do
@@ -75,20 +89,17 @@ sed -i ':a;N;$!ba;s/,\n}/\n}/g' "$MODPATH/pif.json"
 
 # Check custom fingerprint
 if [ -f "/data/adb/pif.json" ]; then
-    ui_print "- Backup custom pif.json"
+    ui_print "- Your backup pif.json has been restored."
     mv -f /data/adb/pif.json /data/adb/pif.json.old
 fi
 
 # give exec perm to action.sh
 chmod +x "$MODPATH/action.sh"
 
-ui_print " — Detecting TrickyStore..."
-TRICKYSTORE_PATH="/data/adb/modules/tricky_store"
-if [ -d "$TRICKYSTORE_PATH" ]; then
-    cp -f "$MODPATH/keybox.xml" /data/adb/tricky_store/
-    cp -f "$MODPATH/target.txt" /data/adb/tricky_store/
-    ui_print "[+] Injecting new veredicts..."
-else
-    ui_print "[!] TrickyStore not installed. Cancelling the Injection..."
-    ui_print " Reboot your device. You can use it even without TrickyStore."
-fi
+ui_print "  TrickyStore detected!"
+sleep 0.8
+ui_print "  [+] Applying new verdicts..."
+cp -f "$MODPATH/keybox.xml" /data/adb/tricky_store/
+cp -f "$MODPATH/target.txt" /data/adb/tricky_store/
+cp -f "$MODPATH/security_patch.txt" /data/adb/tricky_store/
+sleep 1.3
