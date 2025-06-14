@@ -18,9 +18,9 @@ The purpose of this fork is to ensure, by all means possible, that DEVICE_INTEGR
 2. Manually change the `pif.json` file inside the module:
 
 ```sh
-  "spoofProvider": false,
+  "spoofProvider": true,
   "spoofSignature": false,
-  "spoofProps": false,
+  "spoofProps": true,
   "DEBUG": false,
   "spoofVendingSdk": false
 ```
