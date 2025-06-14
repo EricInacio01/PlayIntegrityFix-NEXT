@@ -6,15 +6,16 @@
 [![GitHub Releases](https://img.shields.io/github/downloads/EricInacio01/PlayIntegrityFix-NEXT/latest/total?label=Downloads%20%28Latest%20Release%29&color=blue&style=flat)](https://github.com/EricInacio01/PlayIntegrityFix-NEXT/releases/latest)
 [![GitHub All Releases](https://img.shields.io/github/downloads/EricInacio01/PlayIntegrityFix-NEXT/total?label=Total%20Downloads%20%28All%20Releases%29&color=brightgreen&style=flat)](https://github.com/EricInacio01/PlayIntegrityFix-NEXT/releases)
 
-> WARNING!!!!! ⚠️ some Android 14+ devices may experience crashes due to module implementations.
+> ⚠️ To use this module properly, please install Tricky Store beforehand.
 
 ---
 
 ## ⚠️ NOTES
+The purpose of this fork is to ensure, by all means possible, that DEVICE_INTEGRITY is obtained. However, in some cases, users with versions ***> Android 14+*** may experience some unexpected crashes in the Play Store. This is due to the fact that SpoofVendingSDK is active. To fix this problem, there are two ways:
 
-This fork is not intended to achieve STRONG_INTEGRITY or even hide the root. There are other, more effective solutions if you are aiming for that. We do not sell or send Keyboxes with valid STRONG, so if you see someone impersonating this module, be suspicious.
+1. Access the module's WebUI and disable the “Spoof sdk version to Play Store” option.
 
-Some devices running ***>Android 14+*** may experience crashes or failures in the PlayStore due to native implementations such as `SpoofVendingSDK` and others, so if you're experiencing these problems, be considerate changing the `pif.json file`:
+2. Manually change the `pif.json` file inside the module:
 
 ```sh
   "spoofProvider": false,
@@ -24,7 +25,7 @@ Some devices running ***>Android 14+*** may experience crashes or failures in th
   "spoofVendingSdk": false
 ```
 
-> If you're running a custom ROM or kernel, ensure your kernel name is not on the blacklist. You can verify this by running the uname -r command. Check the list of banned strings here: https://xdaforums.com/t/module-play-integrity-fix-safetynet-fix.4607985/post-89308909
+> If you are running a custom ROM or kernel, make sure that your kernel name is not blacklisted. You can check this by running the command uname -r. You can find the list of prohibited strings here: https://xdaforums.com/t/module-play-integrity-fix-safetynet-fix.4607985/post-89308909
 
 ## 💡 Tips and Tricks
 There are a few tips you can use with this Fork:
