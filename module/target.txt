@@ -2,6 +2,7 @@ android
 com.google.android.apps.walletnfcrel!
 com.google.android.contactkeys!
 com.google.android.gms!
+com.google.android.gsf!
 com.google.android.safetycore!
 com.openai.chatgpt!
 com.whatsapp!

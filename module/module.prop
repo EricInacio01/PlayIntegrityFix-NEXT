@@ -1,6 +1,7 @@
 id=playintegrityfix
 name=PlayIntegrityFix-NEXT 
-version=v1.5
+version=v1.7
 versionCode=1
 author=@ericinacio
 description=This fork aims to achieve valid attestation on devices that have the new PlayIntegrity API rules.
+updateJson=https://raw.githubusercontent.com/EricInacio01/PlayIntegrityFix-NEXT/refs/heads/main/update.json

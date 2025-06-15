@@ -13,7 +13,7 @@ TEMPDIR="$MODDIR/temp" #fallback
 mkdir -p "$TEMPDIR"
 cd "$TEMPDIR"
 
-echo "[+] PlayIntegrityFix $version"
+echo "[+] PIF-Next: $version"
 echo "[+] $(basename "$0")"
 printf "\n\n"
 

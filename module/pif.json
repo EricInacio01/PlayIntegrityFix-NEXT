@@ -1,11 +1,11 @@
 {
-  "FINGERPRINT": "google/oriole_beta/oriole:16/BP22.250325.012/13467521:user/release-keys",
+  "FINGERPRINT": "google/komodo_beta/komodo:16/BP31.250502.008.A1/13572937:user/release-keys",
   "MANUFACTURER": "Google",
-  "MODEL": "Pixel 6",
-  "SECURITY_PATCH": "2025-04-05",
+  "MODEL": "Pixel 9 Pro XL",
+  "SECURITY_PATCH": "2025-05-05",
   "spoofProvider": true,
-  "spoofSignature": false,
   "spoofProps": true,
+  "spoofSignature": false,
   "DEBUG": false,
   "spoofVendingSdk": true
 }
