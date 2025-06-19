@@ -1,111 +1,111 @@
-#!/system/bin/sh
+#!/bin/sh
 
-set -e
-set -u
-
-# Enable verbose debugging
-#set -x
+# PIF-Next: Fingerprint Update Script
+# This script downloads and applies the latest fingerprint and security patch
+# from Google's Pixel OTA metadata. It is compatible with KSU, APatch, Magisk,
+# and Termux environments. It preserves prior spoofing configurations.
 
 PATH=/data/adb/ap/bin:/data/adb/ksu/bin:/data/adb/magisk:/data/data/com.termux/files/usr/bin:$PATH
 MODDIR=/data/adb/modules/playintegrityfix
+version=$(grep "^version=" "$MODDIR/module.prop" | cut -d= -f2)
+FORCE_PREVIEW=1
+
+# Attempt to use high-priority writable temp directory
 TEMPDIR="$MODDIR/temp"
+[ -w /sbin ] && TEMPDIR="/sbin/playintegrityfix"
+[ -w /debug_ramdisk ] && TEMPDIR="/debug_ramdisk/playintegrityfix"
+[ -w /dev ] && TEMPDIR="/dev/playintegrityfix"
 mkdir -p "$TEMPDIR"
 cd "$TEMPDIR"
 
-echo "[+] PIF-Next: Iniciando atualização de fingerprint..."
+# Banner
+echo "[+] PIF-Next version: $version"
+echo "[+] Running: $(basename "$0")"
+echo
 
-# ───────────────────────────────
-# Funções utilitárias
-# ───────────────────────────────
-die() { echo "[!] $1"; exit 1; }
+# Helper: Sleep pause for some environments
+sleep_pause() {
+	if [ -z "$MMRL" ] && [ -z "$KSU_NEXT" ] && { [ "$KSU" = "true" ] || [ "$APATCH" = "true" ]; }; then
+		sleep 5
+	fi
+}
 
+# Helper: Handle download failure
 download_fail() {
-    echo "[!] Falha ao baixar de: $1"
-    rm -rf "$TEMPDIR"
-    die "Abortando devido a falha no download"
+	domain=$(echo "$1" | awk -F[/:] '{print $4}')
+	echo "$1" | grep -q "\.zip$" && return
+	rm -rf "$TEMPDIR"
+	ping -c 1 -W 5 "$domain" >/dev/null 2>&1 || {
+		echo "[!] Cannot connect to $domain. Check your network."
+		sleep_pause
+		exit 1
+	}
+	conflict_module=$(ls /data/adb/modules | grep busybox)
+	for m in $conflict_module; do echo "[!] Conflict: remove module $m"; done
+	echo "[!] Download failed. Aborting."
+	sleep_pause
+	exit 1
 }
 
-download() {
-    if command -v curl > /dev/null 2>&1; then
-        curl --connect-timeout 10 -s "$1" -o "$2" || download_fail "$1"
-    else
-        busybox wget -T 10 --no-check-certificate -qO "$2" "$1" || download_fail "$1"
-    fi
-}
-
-# ───────────────────────────────
-# Baixar versão atual do Android Beta
-# ───────────────────────────────
-echo "[*] Baixando página principal de versões Android..."
-download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
-
-BETA_URL=$(grep -o 'https://developer.android.com/about/versions/[^"]*' PIXEL_VERSIONS_HTML | sort -ru | head -n1)
-[ -z "$BETA_URL" ] && die "URL do beta não encontrada"
-echo "[*] URL da versão beta: $BETA_URL"
-download "$BETA_URL" PIXEL_LATEST_HTML
-
-# Verifica se é Preview
-if grep -qE 'Developer Preview|tooltip>.*preview program' PIXEL_LATEST_HTML; then
-    BETA_URL=$(grep -o 'https://developer.android.com/about/versions/[^"]*' PIXEL_VERSIONS_HTML | sort -ru | head -n2 | tail -n1)
-    echo "[*] Preview detectado. Usando segunda versão disponível: $BETA_URL"
-    download "$BETA_URL" PIXEL_BETA_HTML
+# Helper: Download using curl or fallback to wget
+if command -v curl >/dev/null 2>&1; then
+	download() { curl --connect-timeout 10 -s "$1" > "$2" || download_fail "$1"; }
 else
-    echo "[*] Versão estável detectada."
-    mv -f PIXEL_LATEST_HTML PIXEL_BETA_HTML
+	download() { busybox wget -T 10 --no-check-certificate -qO - "$1" > "$2" || download_fail "$1"; }
 fi
 
-# ───────────────────────────────
-# Baixa OTA Metadata
-# ───────────────────────────────
-OTA_URL="https://developer.android.com$(grep -o 'href="/.*download-ota[^"]*"' PIXEL_BETA_HTML | cut -d'"' -f2 | head -n1)"
-[ -z "$OTA_URL" ] && die "OTA URL não encontrada"
-echo "[*] Baixando OTA metadata de: $OTA_URL"
+# Helper: Random beta picker
+set_random_beta() {
+	[ "$(echo "$MODEL_LIST" | wc -l)" -ne "$(echo "$PRODUCT_LIST" | wc -l)" ] && {
+		echo "[!] MODEL_LIST and PRODUCT_LIST length mismatch"; sleep_pause; exit 1; }
+	rand_index=$(( $$ % $(echo "$MODEL_LIST" | wc -l) ))
+	MODEL=$(echo "$MODEL_LIST" | sed -n "$((rand_index + 1))p")
+	PRODUCT=$(echo "$PRODUCT_LIST" | sed -n "$((rand_index + 1))p")
+}
+
+# Download and parse Android beta pages
+echo "[*] Fetching latest Android beta info..."
+download https://developer.android.com/about/versions PIXEL_VERSIONS_HTML
+BETA_URL=$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n1)
+download "$BETA_URL" PIXEL_LATEST_HTML
+
+if grep -qE 'Developer Preview|tooltip>.*preview program' PIXEL_LATEST_HTML && [ "$FORCE_PREVIEW" = 0 ]; then
+	BETA_URL=$(grep -o 'https://developer.android.com/about/versions/.*[0-9]"' PIXEL_VERSIONS_HTML | sort -ru | cut -d\" -f1 | head -n2 | tail -n1)
+	download "$BETA_URL" PIXEL_BETA_HTML
+else
+	mv -f PIXEL_LATEST_HTML PIXEL_BETA_HTML
+fi
+
+# Extract OTA and device info
+OTA_URL="https://developer.android.com$(grep -o 'href=".*download-ota.*"' PIXEL_BETA_HTML | cut -d\" -f2 | head -n1)"
 download "$OTA_URL" PIXEL_OTA_HTML
 
 MODEL_LIST=$(grep -A1 'tr id=' PIXEL_OTA_HTML | grep 'td' | sed 's;.*<td>\(.*\)</td>;\1;')
 PRODUCT_LIST=$(grep -o 'ota/.*_beta' PIXEL_OTA_HTML | cut -d/ -f2)
-OTA_LIST=$(grep 'ota/.*_beta' PIXEL_OTA_HTML | cut -d'"' -f2)
+OTA_LIST=$(grep 'ota/.*_beta' PIXEL_OTA_HTML | cut -d\" -f2)
 
-[ "$(echo "$MODEL_LIST" | wc -l)" -ne "$(echo "$PRODUCT_LIST" | wc -l)" ] && die "Número de modelos e produtos não bate!"
+[ -z "$PRODUCT" ] && set_random_beta
 
-# Seleciona randomicamente
-count=$(echo "$MODEL_LIST" | wc -l)
-rand_index=$((RANDOM % count + 1))
-MODEL=$(echo "$MODEL_LIST" | sed -n "${rand_index}p")
-PRODUCT=$(echo "$PRODUCT_LIST" | sed -n "${rand_index}p")
-OTA=$(echo "$OTA_LIST" | grep "$PRODUCT")
-
-echo "[+] Selecionado: $MODEL ($PRODUCT)"
-[ -z "$OTA" ] && die "Link OTA para produto $PRODUCT não encontrado"
-
-# ───────────────────────────────
-# Baixa metadados e extrai fingerprint
-# ───────────────────────────────
-echo "[*] Baixando metadados OTA zip..."
-(ulimit -f 2; download "https://dl.google.com/$OTA" PIXEL_ZIP_METADATA)
+echo "[*] Selected device: $MODEL ($PRODUCT)"
+download "https://dl.google.com/$(echo "$OTA_LIST" | grep "$PRODUCT")" PIXEL_ZIP_METADATA
 
 FINGERPRINT=$(strings PIXEL_ZIP_METADATA | grep -am1 'post-build=' | cut -d= -f2)
 SECURITY_PATCH=$(strings PIXEL_ZIP_METADATA | grep -am1 'security-patch-level=' | cut -d= -f2)
 
-[ -z "$FINGERPRINT" ] && die "Fingerprint não encontrado"
-[ -z "$SECURITY_PATCH" ] && die "Security patch não encontrado"
+[ -z "$FINGERPRINT" ] || [ -z "$SECURITY_PATCH" ] && download_fail "https://dl.google.com"
 
-# ───────────────────────────────
-# Lê flags anteriores
-# ───────────────────────────────
-for config in spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk; do
-    if grep -q "\"$config\": true" "$MODDIR/pif.json" 2>/dev/null; then
-        eval "$config=true"
-    else
-        eval "$config=false"
-    fi
+# Preserve previous spoof settings
+spoofConfig="spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk"
+for config in $spoofConfig; do
+	if grep -q "\"$config\": true" "$MODDIR/pif.json" 2>/dev/null; then
+		eval "$config=true"
+	else
+		eval "$config=false"
+	fi
 done
 
-# ───────────────────────────────
-# Gera novo pif.json
-# ───────────────────────────────
-echo "[*] Gerando novo pif.json..."
-cat <<EOF > "$TEMPDIR/pif.json"
+# Generate and write new pif.json
+cat <<EOF | tee pif.json
 {
   "FINGERPRINT": "$FINGERPRINT",
   "MANUFACTURER": "Google",
@@ -119,27 +119,15 @@ cat <<EOF > "$TEMPDIR/pif.json"
 }
 EOF
 
-cp -f "$TEMPDIR/pif.json" /data/adb/pif.json
-echo "[+] pif.json salvo em /data/adb/pif.json"
+cp -f pif.json /data/adb/pif.json
 
-# ───────────────────────────────
-# Atualiza Tricky Store se existir
-# ───────────────────────────────
-TS_PATCH=/data/adb/tricky_store/security_patch.txt
-if [ -d "/data/adb/tricky_store" ]; then
-    echo "[*] Atualizando security_patch.txt do Tricky Store"
-    [ ! -f "$TS_PATCH" ] && echo "all=" > "$TS_PATCH"
-    grep -q 'all=' "$TS_PATCH" && sed -i "s/all=.*/all=$SECURITY_PATCH/" "$TS_PATCH"
-    grep -q 'system=' "$TS_PATCH" && sed -i "s/system=.*/system=$(echo ${SECURITY_PATCH//-} | cut -c1-6)/" "$TS_PATCH"
-fi
-
-# ───────────────────────────────
-# Mata o GMS
-# ───────────────────────────────
-for PID in $(busybox pidof com.google.android.gms.unstable 2>/dev/null); do
-    echo "[*] Finalizando processo GMS PID $PID"
-    kill -9 "$PID"
+# Kill GMS to apply changes
+for pid in $(busybox pidof com.google.android.gms.unstable 2>/dev/null); do
+	echo "[*] Killing GMS PID $pid"
+	kill -9 "$pid"
 done
 
-echo "[✔] Fingerprint atualizado com sucesso."
+# Cleanup
 rm -rf "$TEMPDIR"
+echo "[+] Done. New fingerprint applied."
+sleep_pause
