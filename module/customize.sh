@@ -113,13 +113,21 @@ fi
 ui_print "----------------------------------------"
 ui_print "  🔧 Applying new verdicts..."
 
-# keybox.xml: Ask if you want to replace
+# Flush any previous input events to avoid accidental reuse
+clear_input_events() {
+    timeout 1 getevent -qlc 10 > /dev/null 2>&1
+}
+
+# keybox.xml Replacement
 KEYBOX_TARGET="/data/adb/tricky_store/keybox.xml"
 if [ -f "$KEYBOX_TARGET" ]; then
     ui_print "❓ An existing keybox.xml file was detected."
     ui_print "  Would you like to replace it with the module version?"
     ui_print "  - Volume Up: Yes"
     ui_print "  - Volume Down: No"
+
+    clear_input_events
+
     while true; do
         key=$(getevent -lc 1 2>/dev/null | grep -E 'KEY_VOLUME(UP|DOWN)')
         if echo "$key" | grep -q "KEY_VOLUMEUP"; then
@@ -135,6 +143,16 @@ if [ -f "$KEYBOX_TARGET" ]; then
 else
     cp -f "$MODPATH/keybox.xml" "$KEYBOX_TARGET"
 fi
+
+# target.txt merge
+TARGET_TXT="/data/adb/tricky_store/target.txt"
+if [ -f "$TARGET_TXT" ]; then
+    ui_print "  ➕ Merging target.txt with existing configuration..."
+    grep -vxFf "$MODPATH/target.txt" "$TARGET_TXT" >> "$MODPATH/target.txt"
+fi
+cp -f "$MODPATH/target.txt" "$TARGET_TXT"
+cp -f "$MODPATH/security_patch.txt" /data/adb/tricky_store/
+
 
 # Apply new target.txt merging
 TARGET_TXT="/data/adb/tricky_store/target.txt"
