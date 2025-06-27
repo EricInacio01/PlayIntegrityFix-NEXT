@@ -1,6 +1,12 @@
 #!/system/bin/sh
 
-# abort recovery installation
+# ===============================
+# PIF-Next, an fork of chiteroman's module.
+# Thanks for Chiteroman for the original module.
+# Thanks for osm0sis for supporting autopif2.sh scripts in your Fork.
+# Thanks for Papacuz for security_patch scripts.
+# ===============================
+
 if ! $BOOTMODE; then
     ui_print "================================================="
     ui_print "! ERROR: Installation from recovery NOT supported"
@@ -9,164 +15,104 @@ if ! $BOOTMODE; then
     abort
 fi
 
-if [ "$API" -lt 26 ]; then
-    abort "❌ Android < 8.0 is not supported!"
-fi
+# android < 8 not supported
+[ "$API" -lt 26 ] && abort "❌ Android < 8.0 is not supported!"
 
-
-# Detect Android 14+ and optionally disable SpoofVendingSdk
+# Android 14+ warning
 if [ "$API" -ge 34 ]; then
     ui_print "----------------------------------------"
     ui_print "  🌐 Android 14 or higher detected"
-    ui_print "  ⚠ SpoofVendingSdk is enabled by default"
-    ui_print "    (May cause Play Store issues)"
-    ui_print ""
-    ui_print "  ❓ Apply SpoofVendingSdk?"
-    ui_print "  - Volume Up: Accept (Keep enabled)"
-    ui_print "  - Volume Down: Decline (Disable)"
+    ui_print "  ⚠ This module comes with spoofvendingsdk DISABLED by default."
+    ui_print "    Enabling it may cause crashes in the Play Store."
     ui_print "----------------------------------------"
-
-    while true; do
-        key=$(getevent -lc 1 2>/dev/null | grep -E 'KEY_VOLUME(UP|DOWN)')
-        if echo "$key" | grep -q "KEY_VOLUMEUP"; then
-            ui_print "  ✅ SpoofVendingSdk will remain enabled"
-            break
-        elif echo "$key" | grep -q "KEY_VOLUMEDOWN"; then
-            ui_print "  ✅ SpoofVendingSdk will be disabled"
-            sed -i 's/"spoofVendingSdk": true/"spoofVendingSdk": false/' "$MODPATH/pif.json"
-            break
-        fi
-        sleep 0.1
-    done
 fi
 
-
-# Check if Zygisk is enabled
 check_zygisk() {
-    local ZYGISK_MODULE="/data/adb/modules/zygisksu"
-    local REZYGISK_MODULE="/data/adb/modules/rezygisk"
     local MAGISK_DIR="/data/adb/magisk"
-    local ZYGISK_MSG="❌ Zygisk is not enabled. Please:
-    - Enable Zygisk in Magisk settings
-    - Install ZygiskNext or ReZygisk module"
+    local MSG=" ❌ Zygisk is not enabled.\n- Enable Zygisk in Magisk settings\n- Install ZygiskNext or ReZygisk module"
 
-    if [ -d "$ZYGISK_MODULE" ] || [ -d "$REZYGISK_MODULE" ]; then
-        return 0
-    fi
+    [ -d /data/adb/modules/zygisksu ] || [ -d /data/adb/modules/rezygisk ] && return 0
 
     if [ -d "$MAGISK_DIR" ]; then
-        local ZYGISK_STATUS
-        ZYGISK_STATUS=$(magisk --sqlite "SELECT value FROM settings WHERE key='zygisk';")
-        [ "$ZYGISK_STATUS" = "value=1" ] || abort "$ZYGISK_MSG"
+        local zygisk_status
+        zygisk_status=$(magisk --sqlite "SELECT value FROM settings WHERE key='zygisk';")
+        [ "$zygisk_status" = "value=1" ] || abort "$MSG"
     else
-        abort "$ZYGISK_MSG"
+        abort "$MSG"
     fi
 }
 
 check_zygisk
 
-# abort obsolete modules
-if [ -d "/data/adb/modules/safetynet-fix" ]; then
-    ui_print "⚠ safetynet-fix is obsolete and incompatible with PIF"
-    ui_print "  Will be removed on next reboot. Avoid reinstalling!"
-    touch "/data/adb/modules/safetynet-fix/remove"
-fi
+[ -d /data/adb/modules/safetynet-fix ] && {
+    ui_print "⚠ safetynet-fix is incompatible and will be removed on next reboot."
+    touch /data/adb/modules/safetynet-fix/remove
+}
+[ -d /data/adb/modules/playcurl ] && ui_print "⚠ playcurl may overwrite the fingerprint with invalid data."
+[ -d /data/adb/modules/MagiskHidePropsConf ] && ui_print "⚠ MagiskHidePropsConf may cause issues with PIF."
 
-[ -d "/data/adb/modules/playcurl" ] &&     ui_print "⚠ playcurl may overwrite fingerprint with invalid data!"
-
-[ -d "/data/adb/modules/MagiskHidePropsConf" ] &&     ui_print "⚠ MagiskHidePropsConf may cause issues with PIF"
-
-# ────────────────────────────────────────────────
-# 🔍 Tricky Store Detection
-# ────────────────────────────────────────────────
+##########
+# Better TrickyStore detection...
 ui_print "----------------------------------------"
 ui_print "  🔍 Detecting Tricky Store..."
 TRICKYSTORE_PATH="/data/adb/modules/tricky_store"
-if [ ! -d "$TRICKYSTORE_PATH" ]; then
-    ui_print "  ❌ Tricky Store not detected!"
-    abort "  Installation cancelled. Install Tricky Store first."
-fi
-ui_print "  ✅ Tricky Store detected!"
+[ ! -d "$TRICKYSTORE_PATH" ] && abort "❌ Tricky Store not detected!\nInstall it first."
+ui_print "  ✅ Tricky Store detected."
 
-
-# preserve previous spoof settings
-spoofConfig="spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk"
-for config in $spoofConfig; do
-    grep -q "$config" "/data/adb/modules/playintegrityfix/pif.json" || continue
-    if grep -q ""$config": true" "/data/adb/modules/playintegrityfix/pif.json"; then
-        sed -i "s/"$config": .*/"$config": true,/" "$MODPATH/pif.json"
-    else
-        sed -i "s/"$config": .*/"$config": false,/" "$MODPATH/pif.json"
-    fi
-done
-sed -i ':a;N;$!ba;s/,
-}/
-}/g' "$MODPATH/pif.json"
-
-# fingerprint restore
-if [ -f "/data/adb/pif.json" ]; then
-    ui_print "- 📂 Backup pif.json restored."
-    mv -f /data/adb/pif.json /data/adb/pif.json.old
+# Avoid duplicates in target.txt
+TARGET_USER_PATH="/data/adb/tricky_store/target.txt"
+TARGET_MODULE_PATH="$MODPATH/target.txt"
+if [ -f "$TARGET_USER_PATH" ]; then
+    ui_print "  🔁 Merging target.txt..."
+    ui_print "----------------------------------------"
+    cat "$TARGET_USER_PATH" "$TARGET_MODULE_PATH" | sort -u > "$TARGET_USER_PATH.tmp"
+    mv -f "$TARGET_USER_PATH.tmp" "$TARGET_USER_PATH"
+else
+    cp -f "$TARGET_MODULE_PATH" "$TARGET_USER_PATH"
 fi
 
-# TrickyStore detection
-ui_print "----------------------------------------"
-ui_print "  🔧 Applying new verdicts..."
-
-# Flush any previous input events to avoid accidental reuse
-clear_input_events() {
-    timeout 1 getevent -qlc 10 > /dev/null 2>&1
-}
-
-# keybox.xml Replacement
-KEYBOX_TARGET="/data/adb/tricky_store/keybox.xml"
-if [ -f "$KEYBOX_TARGET" ]; then
-    ui_print "❓ An existing keybox.xml file was detected."
-    ui_print "  Would you like to replace it with the module version?"
+# Better Keybox mechanism, avoid to overwrite keybox.xml settings
+KEYBOX_USER_PATH="/data/adb/tricky_store/keybox.xml"
+KEYBOX_MODULE_PATH="$MODPATH/keybox.xml"
+if [ -f "$KEYBOX_USER_PATH" ] && ! cmp -s "$KEYBOX_USER_PATH" "$KEYBOX_MODULE_PATH"; then
+    ui_print "  ❓ Existing keybox.xml detected"
+    ui_print "  Do you want to overwrite it?"
     ui_print "  - Volume Up: Yes"
     ui_print "  - Volume Down: No"
-
-    clear_input_events
-
+    ui_print "----------------------------------------"
     while true; do
         key=$(getevent -lc 1 2>/dev/null | grep -E 'KEY_VOLUME(UP|DOWN)')
-        if echo "$key" | grep -q "KEY_VOLUMEUP"; then
-            cp -f "$MODPATH/keybox.xml" "$KEYBOX_TARGET"
-            ui_print "  ✅ keybox.xml replaced."
-            break
-        elif echo "$key" | grep -q "KEY_VOLUMEDOWN"; then
-            ui_print "  ❎ keybox.xml preserved."
-            break
-        fi
+        echo "$key" | grep -q "KEY_VOLUMEUP" && { cp -f "$KEYBOX_MODULE_PATH" "$KEYBOX_USER_PATH"; break; }
+        echo "$key" | grep -q "KEY_VOLUMEDOWN" && { ui_print "🚫 keybox.xml preserved."; break; }
         sleep 0.1
     done
 else
-    cp -f "$MODPATH/keybox.xml" "$KEYBOX_TARGET"
+    cp -f "$KEYBOX_MODULE_PATH" "$KEYBOX_USER_PATH"
 fi
 
-# target.txt merge
-TARGET_TXT="/data/adb/tricky_store/target.txt"
-if [ -f "$TARGET_TXT" ]; then
-    ui_print "  ➕ Merging target.txt with existing configuration..."
-    grep -vxFf "$MODPATH/target.txt" "$TARGET_TXT" >> "$MODPATH/target.txt"
-fi
-cp -f "$MODPATH/target.txt" "$TARGET_TXT"
+# Copy security_patch
 cp -f "$MODPATH/security_patch.txt" /data/adb/tricky_store/
 
+# Improved TrickyStore mechanism
+OLD_JSON="/data/adb/modules/playintegrityfix/pif.json"
+NEW_JSON="$MODPATH/pif.json"
 
-# Apply new target.txt merging
-TARGET_TXT="/data/adb/tricky_store/target.txt"
-if [ -f "$TARGET_TXT" ]; then
-    ui_print "  ➕ Merging target.txt with existing configuration..."
-    grep -vxFf "$MODPATH/target.txt" "$TARGET_TXT" >> "$MODPATH/target.txt"
-fi
-cp -f "$MODPATH/target.txt" "$TARGET_TXT"
-cp -f "$MODPATH/security_patch.txt" /data/adb/tricky_store/
+ui_print "  📦 Preserving previous settings..."
+for key in spoofProvider spoofProps spoofSignature DEBUG spoofVendingSdk; do
+    grep -q "$key" "$OLD_JSON" || continue
+    if grep -q "\"$key\": true" "$OLD_JSON"; then
+        sed -i "s/\"$key\": .*/\"$key\": true,/" "$NEW_JSON"
+    else
+        sed -i "s/\"$key\": .*/\"$key\": false,/" "$NEW_JSON"
+    fi
+done
+sed -i ':a;N;$!ba;s/\,\n\}/\n\}/g' "$NEW_JSON"
 
-sleep 1.3
-ui_print "  "
-ui_print "  ✅ Settings successfully applied! REBOOT your device."
-ui_print "----------------------------------------"
+# Restore customized pif.json
+[ -f /data/adb/pif.json ] && mv -f /data/adb/pif.json /data/adb/pif.json.old && ui_print "  📂 Backup pif.json preserved."
 
-# CANNOT Install in recovery!
+# Final settings
 chmod +x "$MODPATH/action.sh"
+ui_print "----------------------------------------"
+ui_print "  ✅ Settings applied successfully."
+ui_print "----------------------------------------"
