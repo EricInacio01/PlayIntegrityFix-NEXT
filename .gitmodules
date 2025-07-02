@@ -1,6 +1,0 @@
-[submodule "Dobby"]
-	path = app/src/main/cpp/Dobby
-	url = https://github.com/JingMatrix/Dobby
-[submodule "json"]
-	path = app/src/main/cpp/json
-	url = https://github.com/nlohmann/json
