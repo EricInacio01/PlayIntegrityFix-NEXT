@@ -2,12 +2,12 @@ name: Android CI
 
 on:
   push:
-    branches: inject_manual
+    branches: inject_s
     paths-ignore: '**.md'
   workflow_dispatch:
 
 jobs:
-  build_vending:
+  build:
     runs-on: macos-15
 
     steps:
@@ -16,7 +16,7 @@ jobs:
       with:
         submodules: 'recursive'
         fetch-depth: 1
-        ref: inject_vending
+        ref: inject_s
 
     - name: Set up JDK
       uses: actions/setup-java@v4
@@ -33,36 +33,6 @@ jobs:
     - name: Upload CI module zip as artifact zip
       uses: actions/upload-artifact@v4
       with:
-        name: PlayIntegrityFix_${{ github.run_number }}-inject-vending
-        path: 'module/*'
-        compression-level: 9
-
-  build_manual:
-    runs-on: macos-15
-
-    steps:
-    - name: Check out
-      uses: actions/checkout@v4
-      with:
-        submodules: 'recursive'
-        fetch-depth: 1
-        ref: inject_manual
-
-    - name: Set up JDK
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: 21
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-
-    - name: Build with Gradle
-      run: ./gradlew assembleRelease
-
-    - name: Upload CI module zip as artifact zip
-      uses: actions/upload-artifact@v4
-      with:
-        name: PlayIntegrityFix_${{ github.run_number }}-inject-manual
+        name: PlayIntegrityFix_${{ github.run_number }}-inject-s
         path: 'module/*'
         compression-level: 9
