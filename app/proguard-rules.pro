@@ -1,5 +1,0 @@
--keep class es.chiteroman.playintegrityfix.EntryPoint { public <methods>; }
--keep class es.chiteroman.playintegrityfix.EntryPointVending { public <methods>; }
--keepclassmembers class es.chiteroman.playintegrityfix.CustomKeyStoreSpi
--keepclassmembers class es.chiteroman.playintegrityfix.CustomPackageInfoCreator { public <methods>; }
--keepclassmembers class es.chiteroman.playintegrityfix.CustomProvider
