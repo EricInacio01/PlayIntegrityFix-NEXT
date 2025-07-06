@@ -1,4 +1,4 @@
-import { exec, spawn } from "./assets/kernelsu.js";
+import { exec, spawn, toast } from "./assets/kernelsu.js";
 
 let forcePreview = true;
 let shellRunning = false;
@@ -29,6 +29,7 @@ function applyButtonEventListeners() {
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
     const terminal = document.querySelector('.output-terminal-content');
+    const githubBtn = document.getElementById('github-btn');
 
     fetchButton.addEventListener('click', runAction);
     previewFpToggle.addEventListener('click', async () => {
@@ -81,6 +82,14 @@ function applyButtonEventListeners() {
     terminal.addEventListener('touchend', () => {
         initialPinchDistance = null;
     });
+
+    githubBtn.onclick = () => {
+        const link = "https://github.com/KOWX712/PlayIntegrityFix/releases/latest";
+        toast("Redirecting to " + link);
+        setTimeout(() => {
+            exec(`am start -a android.intent.action.VIEW -d ${link}`);
+        }, 100);
+    }
 }
 
 // Function to load the version from module.prop
@@ -92,6 +101,16 @@ async function loadVersionFromModuleProp() {
     } else {
         appendToOutput("[!] Failed to read version from module.prop");
         console.error("Failed to read version from module.prop:", stderr);
+    }
+    checkDescription();
+}
+
+// Check description
+async function checkDescription() {
+    const unofficialOverlay = document.getElementById('unofficial-warning');
+    const { errno } = await exec("grep -q 'tampered' /data/adb/modules/playintegrityfix/module.prop");
+    if (typeof ksu !== 'undefined' && errno === 0) {
+        unofficialOverlay.style.display = 'flex';
     }
 }
 

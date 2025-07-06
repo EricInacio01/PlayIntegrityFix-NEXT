@@ -237,6 +237,46 @@ input:checked+.slider:before {
     word-break: break-all;
 }
 
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    Justify-content: center;
+    align-items: center;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.overlay-content {
+    padding: 30px;
+    width: 90%;
+    max-width: 900px;
+    border-radius: 15px;
+    box-sizing: border-box;
+}
+
+.warning-content {
+    background-color: #870F0F;
+    color: white;
+    
+    h1 {
+        margin: 0;
+    }
+}
+
+.warning-button {
+    border: none;
+    border-radius: 12px;
+    width: 100%;
+    padding: 15px;
+    font-size: 16px;
+    font-weight: bold;
+    background-color: #5C5C5C;
+    color: white;
+}
+
 .ripple-element {
     position: relative;
     overflow: hidden;

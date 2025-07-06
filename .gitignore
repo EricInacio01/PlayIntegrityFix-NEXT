@@ -12,3 +12,4 @@ local.properties
 *.so
 *.zip
 .vscode
+checksum.h

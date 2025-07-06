@@ -8,6 +8,9 @@
 #include <cerrno>
 #include <filesystem>
 #include <sys/stat.h>
+#include <fcntl.h>
+#include <vector>
+#include "checksum.h"
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
 
@@ -16,6 +19,7 @@
 #define LIB_64 "/data/adb/modules/playintegrityfix/inject/arm64-v8a.so"
 #define LIB_32 "/data/adb/modules/playintegrityfix/inject/armeabi-v7a.so"
 
+#define MODULE_PROP "/data/adb/modules/playintegrityfix/module.prop"
 #define DEFAULT_PIF "/data/adb/modules/playintegrityfix/pif.prop"
 #define CUSTOM_PIF "/data/adb/pif.prop"
 
@@ -83,6 +87,75 @@ static bool copyFile(const std::string &from, const std::string &to, mode_t perm
            );
 }
 
+static uint32_t crc32(const uint8_t *data, size_t len) {
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; ++j)
+            crc = (crc >> 1) ^ (0xEDB88320U & (-(crc & 1)));
+    }
+    return ~crc;
+}
+
+static bool verifyModule(const char *path, const char *expected_hex) {
+    int fd = open(path, O_RDWR);
+    if (fd < 0)
+        return false;
+
+    std::vector<uint8_t> buf;
+    uint8_t tmp[512];
+    ssize_t n;
+    while ((n = read(fd, tmp, sizeof(tmp))) > 0) {
+        buf.insert(buf.end(), tmp, tmp + n);
+    }
+    if (buf.empty()) {
+        close(fd);
+        return false;
+    }
+
+    uint32_t crc = crc32(buf.data(), buf.size());
+    uint32_t expected_crc = 0;
+    sscanf(expected_hex, "%x", &expected_crc);
+
+    if (crc == expected_crc) {
+        close(fd);
+        return true;
+    }
+
+    LOGD("[COMPANION] module tampered!");
+
+    lseek(fd, 0, SEEK_SET);
+    std::vector<std::string> lines;
+    std::string file_str(buf.begin(), buf.end());
+    size_t pos = 0;
+    bool found = false;
+    while (pos < file_str.size()) {
+        size_t next = file_str.find('\n', pos);
+        std::string line = file_str.substr(pos, next - pos + 1);
+        if (line.rfind("description=", 0) == 0) {
+            line = "description=❌ This module has been tampered, please install from official source.\n";
+            found = true;
+        }
+        lines.push_back(line);
+        if (next == std::string::npos) break;
+        pos = next + 1;
+    }
+
+    if (ftruncate(fd, 0) != 0) {
+        close(fd);
+        return false;
+    }
+    lseek(fd, 0, SEEK_SET);
+    for (const auto &line : lines) {
+        if (write(fd, line.c_str(), line.size()) != (ssize_t)line.size()) {
+            close(fd);
+            return false;
+        }
+    }
+    close(fd);
+    return false;
+}
+
 static void companion(int fd) {
     bool ok = true;
 
@@ -119,6 +192,10 @@ static void companion(int fd) {
     }
 
     LOGD("[COMPANION] copied pif");
+
+    ok &= verifyModule(MODULE_PROP, MODULE_PROP_CHECKSUM_HEX);
+
+    LOGD("[COMPANION] verified module.prop");
 
     xwrite(fd, &ok, sizeof(bool));
 }
