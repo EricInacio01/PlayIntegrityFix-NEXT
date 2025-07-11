@@ -1,3 +1,5 @@
+// Synced with latest PlayIntegrityFix fork by KOWX712
+// All the credits to chiteroman & kowx712.
 #include "dobby.h"
 #include <android/log.h>
 #include <jni.h>
@@ -7,6 +9,11 @@
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "PIF", __VA_ARGS__)
+
+
+static bool spoofUserBuild = true;
+static bool spoofAbi = true;
+static bool spoofLocale = true;
 
 static std::string dir;
 static JNIEnv *env;
@@ -19,6 +26,15 @@ static bool spoofBuild = true, spoofProps = true, spoofProvider = true, spoofSig
 
 static std::string DEVICE_INITIAL_SDK_INT = "21", SECURITY_PATCH, BUILD_ID;
 static bool spoofVendingSdk = false;
+
+static std::string BUILD_RELEASE;
+static std::string BUILD_TYPE = "user";
+static std::string BUILD_TAGS = "release-keys";
+static std::string RO_DEBUGGABLE = "0";
+static std::string RO_SECURE = "1";
+static std::string VERIFIED_BOOT_STATE = "green";
+static std::string FLASH_LOCKED = "1";
+static std::string VBMETA_STATE = "locked";
 
 typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
 
@@ -50,6 +66,26 @@ static void modify_callback(void *cookie, const char *name, const char *value,
         if (!BUILD_ID.empty()) {
             value = BUILD_ID.c_str();
         }
+    }
+
+    else if (prop == "ro.build.version.release") {
+        if (!BUILD_RELEASE.empty()) {
+            value = BUILD_RELEASE.c_str();
+        }
+    } else if (prop == "ro.build.type") {
+        value = BUILD_TYPE.c_str();
+    } else if (prop == "ro.build.tags") {
+        value = BUILD_TAGS.c_str();
+    } else if (prop == "ro.debuggable") {
+        value = RO_DEBUGGABLE.c_str();
+    } else if (prop == "ro.secure") {
+        value = RO_SECURE.c_str();
+    } else if (prop == "ro.boot.verifiedbootstate") {
+        value = VERIFIED_BOOT_STATE.c_str();
+    } else if (prop == "ro.boot.flash.locked") {
+        value = FLASH_LOCKED.c_str();
+    } else if (prop == "ro.boot.vbmeta.device_state") {
+        value = VBMETA_STATE.c_str();
     }
 
     if (strcmp(oldValue, value) == 0) {
@@ -224,6 +260,36 @@ static void parseProps() {
     }
     if (propMap.count("ID")) {
         BUILD_ID = propMap["ID"];
+    }
+    
+    if (propMap.count("RELEASE")) {
+        BUILD_RELEASE = propMap["RELEASE"];
+    }
+    if (propMap.count("TYPE")) {
+        BUILD_TYPE = propMap["TYPE"];
+    }
+    if (propMap.count("TAGS")) {
+        BUILD_TAGS = propMap["TAGS"];
+    }
+    if (propMap.count("ro.debuggable"))     {
+        RO_DEBUGGABLE = propMap["ro.debuggable"];
+        propMap.erase("ro.debuggable");
+    }
+    if (propMap.count("ro.secure")) {
+        RO_SECURE = propMap["ro.secure"];
+        propMap.erase("ro.secure");
+    }
+    if (propMap.count("ro.boot.verifiedbootstate")) {
+        VERIFIED_BOOT_STATE = propMap["ro.boot.verifiedbootstate"];
+        propMap.erase("ro.boot.verifiedbootstate");
+    }
+    if (propMap.count("ro.boot.flash.locked")) {
+        FLASH_LOCKED = propMap["ro.boot.flash.locked"];
+        propMap.erase("ro.boot.flash.locked");
+    }
+    if (propMap.count("ro.boot.vbmeta.device_state")) {
+        VBMETA_STATE = propMap["ro.boot.vbmeta.device_state"];
+        propMap.erase("ro.boot.vbmeta.device_state");
     }
 }
 
