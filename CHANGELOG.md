@@ -2,6 +2,10 @@
 
 Play Integrity Fix [INJECT] - fork by KOWX712
 
+## v4.2
+
+- Fixed crash.
+
 ## v4.1
 
 - Update fingerprint.
