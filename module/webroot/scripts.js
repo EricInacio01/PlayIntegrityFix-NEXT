@@ -12,14 +12,12 @@ const spoofBuildToggle = document.getElementById('toggle-spoofBuild');
 const spoofProviderToggle = document.getElementById('toggle-spoofProvider');
 const spoofPropsToggle = document.getElementById('toggle-spoofProps');
 const spoofSignatureToggle = document.getElementById('toggle-spoofSignature');
-const debugToggle = document.getElementById('toggle-debug');
 const spoofVendingSdkToggle = document.getElementById('toggle-sdk-vending');
 const spoofConfig = [
     { container: "spoofBuild-toggle-container", toggle: spoofBuildToggle, type: 'spoofBuild' },
     { container: "spoofProvider-toggle-container", toggle: spoofProviderToggle, type: 'spoofProvider' },
     { container: "spoofProps-toggle-container", toggle: spoofPropsToggle, type: 'spoofProps' },
     { container: "spoofSignature-toggle-container", toggle: spoofSignatureToggle, type: 'spoofSignature' },
-    { container: "debug-toggle-container", toggle: debugToggle, type: 'DEBUG' },
     { container: "sdk-vending-toggle-container", toggle: spoofVendingSdkToggle, type: 'spoofVendingSdk' }
 ];
 
@@ -133,7 +131,6 @@ async function loadSpoofConfig() {
         spoofProviderToggle.checked = config.spoofProvider;
         spoofPropsToggle.checked = config.spoofProps;
         spoofSignatureToggle.checked = config.spoofSignature;
-        debugToggle.checked = config.DEBUG;
         spoofVendingSdkToggle.checked = config.spoofVendingSdk;
     } catch (error) {
         appendToOutput(`[!] Failed to load spoof config.`);
