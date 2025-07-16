@@ -215,6 +215,11 @@ public:
         if (!args)
             return;
 
+        bool scriptOnly = (access("/data/adb/pif_script_only", F_OK) == 0);
+
+        if (scriptOnly)
+            return;
+
         std::string dir, name;
 
         auto rawDir = env->GetStringUTFChars(args->app_data_dir, nullptr);

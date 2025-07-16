@@ -1,6 +1,7 @@
 import { exec, spawn, toast } from "./assets/kernelsu.js";
 
 let forcePreview = true;
+let scriptOnly = false;
 let shellRunning = false;
 let initialPinchDistance = null;
 let currentFontSize = 14;
@@ -26,6 +27,7 @@ const spoofConfig = [
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
     const previewFpToggle = document.getElementById('preview-fp-toggle-container');
+    const scriptOnlyToggle = document.getElementById('script-only-toggle-container');
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
     const terminal = document.querySelector('.output-terminal-content');
@@ -38,6 +40,15 @@ function applyButtonEventListeners() {
         appendToOutput(`[+] Switched fingerprint to ${forcePreview ? 'preview' : 'beta'}`);
     });
 
+    scriptOnlyToggle.addEventListener('click', async () => {
+        await exec(`${scriptOnly ? 'rm -rf /data/adb/pif_script_only' : 'touch /data/adb/pif_script_only'} || true
+            killall com.google.android.gms.unstable || true
+            killall com.android.vending || true
+        `);
+        loadScriptOnlyConfig();
+        appendToOutput(`[+] ${scriptOnly ? 'Disabled' : 'Enabled'} script only mode.`);
+    });
+
     advanced.addEventListener('click', () => {
         document.querySelectorAll('.advanced-option').forEach(option => {
             option.style.display = 'flex';
@@ -45,10 +56,7 @@ function applyButtonEventListeners() {
             option.classList.add('advanced-show');
         });
         advanced.style.display = 'none';
-        const lists = Array.from(document.querySelectorAll('.toggle-list'));
-        lists.forEach(list => list.style.borderBottom = '1px solid var(--border-color)');
-        const visibleLists = lists.filter(list => getComputedStyle(list).display !== 'none');
-        if (visibleLists.length > 0) visibleLists[visibleLists.length - 1].style.borderBottom = 'none';
+        refreshBorder();
     });
 
     clearButton.addEventListener('click', () => {
@@ -405,6 +413,29 @@ async function checkMMRL() {
     }
 }
 
+function loadScriptOnlyConfig() {
+    exec('[ -e "/data/adb/pif_script_only" ]')
+        .then(({ errno }) => {
+            scriptOnly = errno === 0;
+            document.querySelectorAll('.toggle-list').forEach(toggle => {
+                if (toggle.classList.contains('advanced-option')
+                    && !toggle.classList.contains('advanced-show')
+                    || toggle.classList.contains('script-only')
+                ) return;
+                toggle.style.display = scriptOnly ? 'none' : 'flex';
+            });
+            document.getElementById('toggle-script-only').checked = scriptOnly;
+            refreshBorder();
+        });
+}
+
+function refreshBorder() {
+    const lists = Array.from(document.querySelectorAll('.toggle-list'));
+    lists.forEach(list => list.style.borderBottom = '1px solid var(--border-color)');
+    const visibleLists = lists.filter(list => getComputedStyle(list).display !== 'none');
+    if (visibleLists.length > 0) visibleLists[visibleLists.length - 1].style.borderBottom = 'none';
+}
+
 function getDistance(touch1, touch2) {
     return Math.hypot(
         touch1.clientX - touch2.clientX,
@@ -426,6 +457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         setupSpoofConfigButton(config.container, config.toggle, config.type);
     });
     loadPreviewFingerprintConfig();
+    loadScriptOnlyConfig();
     applyButtonEventListeners();
     applyRippleEffect();
     updateAutopif();
