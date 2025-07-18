@@ -1,306 +1,313 @@
 #include "dobby.h"
-#include "json.hpp"
 #include <android/log.h>
 #include <jni.h>
 #include <sys/system_properties.h>
+#include <unordered_map>
+#include <vector>
+#include <string>
+#include <fstream>
+#include <sstream>
 
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "PIF", __VA_ARGS__)
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF_ALT", __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "PIF_ALT", __VA_ARGS__)
 
-static std::string dir;
-static JNIEnv *env;
+namespace PIF {
+    static std::string dir;
+    static JNIEnv *env;
+    static bool isGmsUnstable = false;
+    static bool isVending = false;
 
-static nlohmann::json json;
+    static std::unordered_map<std::string, std::string> propMap;
 
-static bool spoofProps = true, spoofProvider = true, spoofSignature = false;
+    static bool spoofBuild = true, spoofProps = true, spoofProvider = false, spoofSignature = false;
+    static bool DEBUG = false;
+    static std::string DEVICE_INITIAL_SDK_INT = "21", SECURITY_PATCH, BUILD_ID;
+    static bool spoofVendingSdk = false;
 
-static bool DEBUG = false;
-static std::string DEVICE_INITIAL_SDK_INT = "21", SECURITY_PATCH, BUILD_ID;
+    typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
+    static T_Callback o_callback = nullptr;
 
-typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
+    static void modify_callback(void *cookie, const char *name, const char *value, uint32_t serial) {
+        if (!cookie || !name || !value || !o_callback) return;
 
-static T_Callback o_callback = nullptr;
+        std::string prop(name);
+        std::string newValue = value;
 
-static void modify_callback(void *cookie, const char *name, const char *value,
-                            uint32_t serial) {
-
-    if (!cookie || !name || !value || !o_callback)
-        return;
-
-    const char *oldValue = value;
-
-    std::string_view prop(name);
-
-    if (prop == "init.svc.adbd") {
-        value = "stopped";
-    } else if (prop == "sys.usb.state") {
-        value = "mtp";
-    } else if (prop.ends_with("api_level")) {
-        if (!DEVICE_INITIAL_SDK_INT.empty()) {
-            value = DEVICE_INITIAL_SDK_INT.c_str();
-        }
-    } else if (prop.ends_with(".security_patch")) {
-        if (!SECURITY_PATCH.empty()) {
-            value = SECURITY_PATCH.c_str();
-        }
-    } else if (prop.ends_with(".build.id")) {
-        if (!BUILD_ID.empty()) {
-            value = BUILD_ID.c_str();
-        }
-    }
-
-    if (strcmp(oldValue, value) == 0) {
-        if (DEBUG)
-            LOGD("[%s]: %s (unchanged)", name, oldValue);
-    } else {
-        LOGD("[%s]: %s -> %s", name, oldValue, value);
-    }
-
-    return o_callback(cookie, name, value, serial);
-}
-
-static void (*o_system_property_read_callback)(prop_info *, T_Callback,
-                                               void *) = nullptr;
-
-static void my_system_property_read_callback(prop_info *pi, T_Callback callback,
-                                             void *cookie) {
-    if (pi && callback && cookie)
-        o_callback = callback;
-    return o_system_property_read_callback(pi, modify_callback, cookie);
-}
-
-static bool doHook() {
-    void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
-
-    if (ptr && DobbyHook(ptr, (void *) my_system_property_read_callback,
-                         (void **) &o_system_property_read_callback) == 0) {
-        LOGD("hook __system_property_read_callback successful at %p", ptr);
-        return true;
-    }
-
-    LOGE("hook __system_property_read_callback failed!");
-    return false;
-}
-
-static void parseJSON() {
-    if (json.empty())
-        return;
-
-    if (json.contains("DEVICE_INITIAL_SDK_INT")) {
-        if (json["DEVICE_INITIAL_SDK_INT"].is_string()) {
-            DEVICE_INITIAL_SDK_INT =
-                    json["DEVICE_INITIAL_SDK_INT"].get<std::string>();
-        } else if (json["DEVICE_INITIAL_SDK_INT"].is_number_integer()) {
-            DEVICE_INITIAL_SDK_INT =
-                    std::to_string(json["DEVICE_INITIAL_SDK_INT"].get<int>());
-        } else {
-            LOGE("Couldn't parse DEVICE_INITIAL_SDK_INT value!");
-        }
-        json.erase("DEVICE_INITIAL_SDK_INT");
-    }
-
-    if (json.contains("spoofProvider") && json["spoofProvider"].is_boolean()) {
-        spoofProvider = json["spoofProvider"].get<bool>();
-        json.erase("spoofProvider");
-    }
-
-    if (json.contains("spoofProps") && json["spoofProps"].is_boolean()) {
-        spoofProps = json["spoofProps"].get<bool>();
-        json.erase("spoofProps");
-    }
-
-    if (json.contains("spoofSignature") && json["spoofSignature"].is_boolean()) {
-        spoofSignature = json["spoofSignature"].get<bool>();
-        json.erase("spoofSignature");
-    }
-
-    if (json.contains("DEBUG") && json["DEBUG"].is_boolean()) {
-        DEBUG = json["DEBUG"].get<bool>();
-        json.erase("DEBUG");
-    }
-
-    if (json.contains("FINGERPRINT") && json["FINGERPRINT"].is_string()) {
-        std::string fingerprint = json["FINGERPRINT"].get<std::string>();
-
-        std::vector<std::string> vector;
-        auto parts = fingerprint | std::views::split('/');
-
-        for (const auto &part: parts) {
-            auto subParts =
-                    std::string(part.begin(), part.end()) | std::views::split(':');
-            for (const auto &subPart: subParts) {
-                vector.emplace_back(subPart.begin(), subPart.end());
+        if (prop == "init.svc.adbd") {
+            newValue = "stopped";
+        } else if (prop == "sys.usb.state") {
+            newValue = "mtp";
+        } else if (prop.ends_with("api_level")) {
+            if (!DEVICE_INITIAL_SDK_INT.empty()) {
+                newValue = DEVICE_INITIAL_SDK_INT;
+            }
+        } else if (prop.ends_with(".security_patch")) {
+            if (!SECURITY_PATCH.empty()) {
+                newValue = SECURITY_PATCH;
+            }
+        } else if (prop.ends_with(".build.id")) {
+            if (!BUILD_ID.empty()) {
+                newValue = BUILD_ID;
             }
         }
 
-        if (vector.size() == 8) {
-            json["BRAND"] = vector[0];
-            json["PRODUCT"] = vector[1];
-            json["DEVICE"] = vector[2];
-            json["RELEASE"] = vector[3];
-            json["ID"] = vector[4];
-            json["INCREMENTAL"] = vector[5];
-            json["TYPE"] = vector[6];
-            json["TAGS"] = vector[7];
-        } else {
-            LOGE("Error parsing fingerprint values!");
+        if (newValue != value) {
+            LOGD("[MODIFY] %s: %s -> %s", name, value, newValue.c_str());
+        } else if (DEBUG) {
+            LOGD("[UNCHANGED] %s: %s", name, value);
         }
+
+        o_callback(cookie, name, newValue.c_str(), serial);
     }
 
-    if (json.contains("SECURITY_PATCH") && json["SECURITY_PATCH"].is_string()) {
-        SECURITY_PATCH = json["SECURITY_PATCH"].get<std::string>();
+    static void (*o_system_property_read_callback)(prop_info *, T_Callback, void *) = nullptr;
+
+    static void my_system_property_read_callback(prop_info *pi, T_Callback callback, void *cookie) {
+        if (pi && callback && cookie) o_callback = callback;
+        o_system_property_read_callback(pi, modify_callback, cookie);
     }
 
-    if (json.contains("ID") && json["ID"].is_string()) {
-        BUILD_ID = json["ID"].get<std::string>();
+    static bool doHook() {
+        void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
+        if (ptr && DobbyHook(ptr, (void *)my_system_property_read_callback, (void **)&o_system_property_read_callback) == 0) {
+            LOGD("Hooked __system_property_read_callback at %p", ptr);
+            return true;
+        }
+        LOGE("Failed to hook __system_property_read_callback");
+        return false;
     }
-}
 
-static void UpdateBuildFields() {
-    jclass buildClass = env->FindClass("android/os/Build");
-    jclass versionClass = env->FindClass("android/os/Build$VERSION");
-
-    for (auto &[key, val]: json.items()) {
-        if (!val.is_string())
-            continue;
-
-        const char *fieldName = key.c_str();
-
-        jfieldID fieldID =
-                env->GetStaticFieldID(buildClass, fieldName, "Ljava/lang/String;");
-
-        if (env->ExceptionCheck()) {
+    static void doSpoofVending() {
+        int requestSdk = 32;
+        jclass buildVersionClass = env->FindClass("android/os/Build$VERSION");
+        if (!buildVersionClass) {
+            LOGE("Build.VERSION class not found");
             env->ExceptionClear();
-
-            fieldID =
-                    env->GetStaticFieldID(versionClass, fieldName, "Ljava/lang/String;");
-
+            return;
+        }
+        jfieldID sdkIntFieldID = env->GetStaticFieldID(buildVersionClass, "SDK_INT", "I");
+        if (!sdkIntFieldID) {
+            LOGE("SDK_INT field not found");
+            env->ExceptionClear();
+            env->DeleteLocalRef(buildVersionClass);
+            return;
+        }
+        int oldValue = env->GetStaticIntField(buildVersionClass, sdkIntFieldID);
+        int targetSdk = std::min(oldValue, requestSdk);
+        if (oldValue != targetSdk) {
+            env->SetStaticIntField(buildVersionClass, sdkIntFieldID, targetSdk);
             if (env->ExceptionCheck()) {
+                env->ExceptionDescribe();
                 env->ExceptionClear();
-                continue;
+                LOGE("Failed to set SDK_INT");
+            } else {
+                LOGD("[SDK_INT] %d -> %d", oldValue, targetSdk);
             }
         }
+        env->DeleteLocalRef(buildVersionClass);
+    }
 
-        if (fieldID != nullptr) {
-            std::string str = val.get<std::string>();
-            const char *value = str.c_str();
-            jstring jValue = env->NewStringUTF(value);
-
-            env->SetStaticObjectField(buildClass, fieldID, jValue);
-            if (env->ExceptionCheck()) {
-                env->ExceptionClear();
-                continue;
-            }
-
-            LOGD("Set '%s' to '%s'", fieldName, value);
+    static void parsePropFile(const std::string& path) {
+        propMap.clear();
+        std::ifstream file(path);
+        if (!file.is_open()) return;
+        std::string line;
+        while (std::getline(file, line)) {
+            size_t commentPos = line.find('#');
+            if (commentPos != std::string::npos) line = line.substr(0, commentPos);
+            line.erase(0, line.find_first_not_of(" \t\r\n"));
+            line.erase(line.find_last_not_of(" \t\r\n") + 1);
+            if (line.empty()) continue;
+            size_t eqPos = line.find('=');
+            if (eqPos == std::string::npos) continue;
+            std::string key = line.substr(0, eqPos);
+            std::string value = line.substr(eqPos + 1);
+            propMap[key] = value;
         }
     }
-}
 
-static void injectDex() {
-    LOGD("get system classloader");
-    auto clClass = env->FindClass("java/lang/ClassLoader");
-    auto getSystemClassLoader = env->GetStaticMethodID(
-            clClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
-    auto systemClassLoader =
-            env->CallStaticObjectMethod(clClass, getSystemClassLoader);
-
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        return;
+    static void parseProps() {
+        if (propMap.count("spoofVendingSdk")) {
+            std::string v = propMap["spoofVendingSdk"];
+            spoofVendingSdk = (v == "1" || v == "true");
+            propMap.erase("spoofVendingSdk");
+        }
+        if (isVending) {
+            propMap.clear();
+            return;
+        }
+        if (propMap.count("DEVICE_INITIAL_SDK_INT")) {
+            DEVICE_INITIAL_SDK_INT = propMap["DEVICE_INITIAL_SDK_INT"];
+            propMap.erase("DEVICE_INITIAL_SDK_INT");
+        }
+        if (propMap.count("spoofBuild")) {
+            std::string v = propMap["spoofBuild"];
+            spoofBuild = (v == "1" || v == "true");
+            propMap.erase("spoofBuild");
+        }
+        if (propMap.count("spoofProvider")) {
+            std::string v = propMap["spoofProvider"];
+            spoofProvider = (v == "1" || v == "true");
+            propMap.erase("spoofProvider");
+        }
+        if (propMap.count("spoofProps")) {
+            std::string v = propMap["spoofProps"];
+            spoofProps = (v == "1" || v == "true");
+            propMap.erase("spoofProps");
+        }
+        if (propMap.count("spoofSignature")) {
+            std::string v = propMap["spoofSignature"];
+            spoofSignature = (v == "1" || v == "true");
+            propMap.erase("spoofSignature");
+        }
+        if (propMap.count("DEBUG")) {
+            std::string v = propMap["DEBUG"];
+            DEBUG = (v == "1" || v == "true");
+            propMap.erase("DEBUG");
+        }
+        if (propMap.count("FINGERPRINT")) {
+            std::string fingerprint = propMap["FINGERPRINT"];
+            std::istringstream iss(fingerprint);
+            std::string token;
+            std::vector<std::string> parts;
+            while (std::getline(iss, token, '/')) {
+                std::istringstream subIss(token);
+                std::string subToken;
+                while (std::getline(subIss, subToken, ':')) {
+                    parts.push_back(subToken);
+                }
+            }
+            static const char* keys[] = {"BRAND", "PRODUCT", "DEVICE", "RELEASE", "ID", "INCREMENTAL", "TYPE", "TAGS"};
+            for (size_t i = 0; i < 8; ++i) {
+                propMap[keys[i]] = (i < parts.size()) ? parts[i] : "";
+            }
+        }
+        if (propMap.count("SECURITY_PATCH")) {
+            SECURITY_PATCH = propMap["SECURITY_PATCH"];
+        }
+        if (propMap.count("ID")) {
+            BUILD_ID = propMap["ID"];
+        }
     }
 
-    LOGD("create class loader");
-    auto dexClClass = env->FindClass("dalvik/system/PathClassLoader");
-    auto dexClInit = env->GetMethodID(
-            dexClClass, "<init>",
-            "(Ljava/lang/String;Ljava/lang/ClassLoader;)V");
-    auto classesJar = env->NewStringUTF((dir + "/classes.dex").c_str());
-    auto dexCl =
-            env->NewObject(dexClClass, dexClInit, classesJar, systemClassLoader);
-
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        return;
+    static void UpdateBuildFields() {
+        jclass buildClass = env->FindClass("android/os/Build");
+        jclass versionClass = env->FindClass("android/os/Build$VERSION");
+        for (const auto& [key, val] : propMap) {
+            jfieldID fieldID = env->GetStaticFieldID(buildClass, key.c_str(), "Ljava/lang/String;");
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();
+                fieldID = env->GetStaticFieldID(versionClass, key.c_str(), "Ljava/lang/String;");
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    continue;
+                }
+            }
+            if (fieldID) {
+                jstring jValue = env->NewStringUTF(val.c_str());
+                env->SetStaticObjectField(buildClass, fieldID, jValue);
+                if (env->ExceptionCheck()) {
+                    env->ExceptionClear();
+                    continue;
+                }
+                LOGD("Set '%s' to '%s'", key.c_str(), val.c_str());
+            }
+        }
     }
 
-    LOGD("load class");
-    auto loadClass = env->GetMethodID(clClass, "loadClass",
-                                      "(Ljava/lang/String;)Ljava/lang/Class;");
-    auto entryClassName =
-            env->NewStringUTF("es.chiteroman.playintegrityfix.EntryPoint");
-    auto entryClassObj = env->CallObjectMethod(dexCl, loadClass, entryClassName);
-    auto entryPointClass = (jclass) entryClassObj;
-
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        return;
+    static std::string propMapToJson() {
+        std::ostringstream json;
+        json << "{";
+        bool first = true;
+        for (const auto& [k, v] : propMap) {
+            if (!first) json << ",";
+            first = false;
+            json << "\"" << k << "\":\"" << v << "\"";
+        }
+        json << "}";
+        return json.str();
     }
 
-    LOGD("call init");
-    auto entryInit = env->GetStaticMethodID(entryPointClass, "init",
-                                            "(Ljava/lang/String;ZZ)V");
-    auto jsonStr = env->NewStringUTF(json.dump().c_str());
-    env->CallStaticVoidMethod(entryPointClass, entryInit, jsonStr, spoofProvider,
-                              spoofSignature);
+    static void injectDex() {
+        jclass clClass = env->FindClass("java/lang/ClassLoader");
+        jmethodID getSystemClassLoader = env->GetStaticMethodID(clClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
+        jobject systemClassLoader = env->CallStaticObjectMethod(clClass, getSystemClassLoader);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            return;
+        }
 
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
+        jclass dexClClass = env->FindClass("dalvik/system/PathClassLoader");
+        jmethodID dexClInit = env->GetMethodID(dexClClass, "<init>", "(Ljava/lang/String;Ljava/lang/ClassLoader;)V");
+        jstring classesJar = env->NewStringUTF((dir + "/classes.dex").c_str());
+        jobject dexCl = env->NewObject(dexClClass, dexClInit, classesJar, systemClassLoader);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            return;
+        }
+
+        jmethodID loadClass = env->GetMethodID(clClass, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+        jstring entryClassName = env->NewStringUTF("es.chiteroman.playintegrityfix.EntryPoint");
+        jobject entryClassObj = env->CallObjectMethod(dexCl, loadClass, entryClassName);
+        jclass entryPointClass = static_cast<jclass>(entryClassObj);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+            return;
+        }
+
+        jmethodID entryInit = env->GetStaticMethodID(entryPointClass, "init", "(Ljava/lang/String;ZZZ)V");
+        jstring jsonStr = env->NewStringUTF(propMapToJson().c_str());
+        env->CallStaticVoidMethod(entryPointClass, entryInit, jsonStr, spoofProvider, spoofSignature, spoofBuild);
+        if (env->ExceptionCheck()) {
+            env->ExceptionDescribe();
+            env->ExceptionClear();
+        }
+
+        env->DeleteLocalRef(entryClassName);
+        env->DeleteLocalRef(entryClassObj);
+        env->DeleteLocalRef(jsonStr);
+        env->DeleteLocalRef(dexCl);
+        env->DeleteLocalRef(classesJar);
+        env->DeleteLocalRef(dexClClass);
+        env->DeleteLocalRef(clClass);
     }
-
-    env->DeleteLocalRef(entryClassName);
-    env->DeleteLocalRef(entryClassObj);
-    env->DeleteLocalRef(jsonStr);
-    env->DeleteLocalRef(dexCl);
-    env->DeleteLocalRef(classesJar);
-    env->DeleteLocalRef(dexClClass);
-    env->DeleteLocalRef(clClass);
-
-    LOGD("jni memory free");
 }
 
 extern "C" [[gnu::visibility("default"), maybe_unused]] bool
-init(JavaVM *vm, const std::string &gmsDir, bool trickyStore, bool testSignedRom) {
+init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) {
+    PIF::isGmsUnstable = isGmsUnstable;
+    PIF::isVending = isVending;
 
-    if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) != JNI_OK) {
+    if (vm->GetEnv(reinterpret_cast<void **>(&PIF::env), JNI_VERSION_1_6) != JNI_OK) {
         LOGE("[INJECT] JNI_ERR!");
         return true;
     }
 
-    dir = gmsDir;
-    LOGD("[INJECT] GMS dir: %s", dir.c_str());
+    PIF::dir = gmsDir;
+    LOGD("[INJECT] GMS dir: %s", PIF::dir.c_str());
 
-    FILE *f = fopen((dir + "/pif.json").c_str(), "r");
-    json = nlohmann::json::parse(f, nullptr, false, true);
-    fclose(f);
+    PIF::parsePropFile(PIF::dir + "/pif.prop");
+    PIF::parseProps();
 
-    parseJSON();
+    if (PIF::isGmsUnstable) {
+        if (PIF::spoofBuild) {
+            PIF::UpdateBuildFields();
+        }
 
-    if (trickyStore) {
-        spoofProvider = false;
-        spoofSignature = false;
-        spoofProps = false;
-    }
+        if (PIF::spoofProvider || PIF::spoofSignature) {
+            PIF::injectDex();
+        } else {
+            LOGD("[INJECT] Dex file won't be injected due to spoofProvider and spoofSignature being false");
+        }
 
-    if (testSignedRom) {
-        spoofProvider = true;
-        spoofSignature = true;
-    }
-
-    UpdateBuildFields();
-
-    if (spoofProvider || spoofSignature) {
-        injectDex();
-    } else {
-        LOGD("[INJECT] Dex file won't be injected due spoofProvider and spoofSignature are false");
-    }
-
-    if (spoofProps) {
-        return !doHook();
+        if (PIF::spoofProps) {
+            return !PIF::doHook();
+        }
+    } else if (PIF::isVending && PIF::spoofVendingSdk) {
+        PIF::doSpoofVending();
     }
 
     return true;
