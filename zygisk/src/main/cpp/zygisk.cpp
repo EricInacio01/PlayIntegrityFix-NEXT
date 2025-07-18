@@ -1,232 +1,236 @@
 #include "zygisk.hpp"
 #include <android/log.h>
 #include <string>
+#include <vector>
+#include <filesystem>
 #include <dlfcn.h>
 #include <unistd.h>
-#include <cerrno>
-#include <filesystem>
+#include <fcntl.h>
 #include <sys/stat.h>
+#include "checksum.h"
 
-#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF", __VA_ARGS__)
-
-#define TS_PATH "/data/adb/modules/tricky_store"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF_ALT", __VA_ARGS__)
 
 #define DEX_PATH "/data/adb/modules/playintegrityfix/classes.dex"
-
 #define LIB_64 "/data/adb/modules/playintegrityfix/inject/arm64-v8a.so"
 #define LIB_32 "/data/adb/modules/playintegrityfix/inject/armeabi-v7a.so"
+#define MODULE_PROP "/data/adb/modules/playintegrityfix/module.prop"
+#define DEFAULT_PIF "/data/adb/modules/playintegrityfix/pif.prop"
+#define CUSTOM_PIF "/data/adb/pif.prop"
 
-#define DEFAULT_JSON "/data/adb/modules/playintegrityfix/pif.json"
-#define CUSTOM_JSON_FORK "/data/adb/modules/playintegrityfix/custom.pif.json"
-#define CUSTOM_JSON "/data/adb/pif.json"
+#define VENDING_PKG "com.android.vending"
+#define DROIDGUARD_PKG "com.google.android.gms.unstable"
 
-static ssize_t xread(int fd, void *buffer, size_t count) {
-    ssize_t total = 0;
-    auto buf = static_cast<char *>(buffer);
-    while (count > 0) {
-        ssize_t ret = TEMP_FAILURE_RETRY(read(fd, buf, count));
-        if (ret < 0)
-            return -1;
-        buf += ret;
-        total += ret;
-        count -= ret;
-    }
-    return total;
-}
-
-static ssize_t xwrite(int fd, const void *buffer, size_t count) {
-    ssize_t total = 0;
-    auto buf = (char *) buffer;
-    while (count > 0) {
-        ssize_t ret = TEMP_FAILURE_RETRY(write(fd, buf, count));
-        if (ret < 0)
-            return -1;
-        buf += ret;
-        total += ret;
-        count -= ret;
-    }
-    return total;
-}
-
-static bool copyFile(const std::string &from, const std::string &to, mode_t perms = 0777) {
-    return std::filesystem::exists(from) &&
-           std::filesystem::copy_file(
-                   from,
-                   to,
-                   std::filesystem::copy_options::overwrite_existing
-           ) &&
-           !chmod(
-                   to.c_str(),
-                   perms
-           );
-}
-
-static bool checkOtaZip() {
-    std::array<char, 256> buffer{};
-    std::string result;
-    bool found = false;
-
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(
-            popen("unzip -l /system/etc/security/otacerts.zip", "r"), pclose);
-    if (!pipe) return false;
-
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        result += buffer.data();
-        if (result.find("testkey") != std::string::npos) {
-            found = true;
-            break;
+namespace FileUtils {
+    ssize_t robustRead(int fd, void* buffer, size_t count) {
+        ssize_t total = 0;
+        char* buf = static_cast<char*>(buffer);
+        while (count > 0) {
+            ssize_t ret = TEMP_FAILURE_RETRY(read(fd, buf, count));
+            if (ret <= 0) return ret < 0 ? -1 : total;
+            total += ret;
+            buf += ret;
+            count -= ret;
         }
+        return total;
     }
 
-    return found;
+    ssize_t robustWrite(int fd, const void* buffer, size_t count) {
+        ssize_t total = 0;
+        const char* buf = static_cast<const char*>(buffer);
+        while (count > 0) {
+            ssize_t ret = TEMP_FAILURE_RETRY(write(fd, buf, count));
+            if (ret <= 0) return ret < 0 ? -1 : total;
+            total += ret;
+            buf += ret;
+            count -= ret;
+        }
+        return total;
+    }
+
+    bool copy(const std::string& src, const std::string& dest, mode_t mode = 0777) {
+        if (!std::filesystem::exists(src)) return false;
+        bool copied = std::filesystem::copy_file(src, dest, std::filesystem::copy_options::overwrite_existing);
+        return copied && (chmod(dest.c_str(), mode) == 0);
+    }
 }
 
-static void companion(int fd) {
-    bool ok = true;
-
-    int size = 0;
-    xread(fd, &size, sizeof(int));
-
-    std::string dir;
-    dir.resize(size);
-    auto bytes = xread(fd, dir.data(), size);
-    dir.resize(bytes);
-    dir.shrink_to_fit();
-
-    LOGD("[COMPANION] GMS dir: %s", dir.c_str());
-
-    auto libFile = dir + "/libinject.so";
-#if defined(__aarch64__)
-    ok &= copyFile(LIB_64, libFile);
-#elif defined(__arm__)
-    ok &= copyFile(LIB_32, libFile);
-#endif
-
-    LOGD("[COMPANION] copied inject lib");
-
-    auto dexFile = dir + "/classes.dex";
-    ok &= copyFile(DEX_PATH, dexFile, 0644);
-
-    LOGD("[COMPANION] copied dex");
-
-    auto jsonFile = dir + "/pif.json";
-    if (!copyFile(CUSTOM_JSON, jsonFile)) {
-        if (!copyFile(CUSTOM_JSON_FORK, jsonFile)) {
-            if (!copyFile(DEFAULT_JSON, jsonFile)) {
-                ok = false;
+namespace Integrity {
+    uint32_t computeCRC32(const uint8_t* data, size_t length) {
+        uint32_t crc = 0xFFFFFFFF;
+        for (size_t i = 0; i < length; ++i) {
+            crc ^= data[i];
+            for (int j = 0; j < 8; ++j) {
+                crc = (crc >> 1) ^ (0xEDB88320U & -(crc & 1));
             }
         }
+        return ~crc;
     }
 
-    LOGD("[COMPANION] copied json");
+    bool checkModule(const char* path, const char* expectedHex) {
+        int fd = open(path, O_RDWR);
+        if (fd < 0) return false;
 
-    std::string ts(TS_PATH);
-    bool trickyStore = std::filesystem::exists(ts) &&
-                       !std::filesystem::exists(ts + "/disable") &&
-                       !std::filesystem::exists(ts + "/remove");
-    xwrite(fd, &trickyStore, sizeof(bool));
+        std::vector<uint8_t> data;
+        uint8_t buffer[512];
+        ssize_t bytesRead;
+        while ((bytesRead = read(fd, buffer, sizeof(buffer))) > 0) {
+            data.insert(data.end(), buffer, buffer + bytesRead);
+        }
+        close(fd);
+        if (data.empty()) return false;
 
-    bool testSignedRom = checkOtaZip();
-    xwrite(fd, &testSignedRom, sizeof(bool));
+        uint32_t crc = computeCRC32(data.data(), data.size());
+        uint32_t expected;
+        sscanf(expectedHex, "%x", &expected);
+        if (crc == expected) return true;
 
-    xwrite(fd, &ok, sizeof(bool));
+        LOGD("[COMPANION] Module tampered detected!");
+        fd = open(path, O_RDWR);
+        if (fd < 0) return false;
+
+        std::string content(data.begin(), data.end());
+        std::vector<std::string> lines;
+        size_t pos = 0;
+        while (pos < content.size()) {
+            size_t end = content.find('\n', pos);
+            if (end == std::string::npos) end = content.size();
+            std::string line = content.substr(pos, end - pos + 1);
+            if (line.find("description=") == 0) {
+                line = "description=❌ This module has been tampered, please install from official source.\n";
+            }
+            lines.push_back(line);
+            pos = end + 1;
+        }
+
+        ftruncate(fd, 0);
+        lseek(fd, 0, SEEK_SET);
+        for (const auto& line : lines) {
+            if (FileUtils::robustWrite(fd, line.c_str(), line.size()) != (ssize_t)line.size()) {
+                close(fd);
+                return false;
+            }
+        }
+        close(fd);
+        return false;
+    }
+}
+
+static void handleCompanion(int fd) {
+    bool success = true;
+    int dirSize = 0;
+    FileUtils::robustRead(fd, &dirSize, sizeof(int));
+
+    std::string gmsDir(dirSize, '\0');
+    ssize_t readBytes = FileUtils::robustRead(fd, gmsDir.data(), dirSize);
+    gmsDir.resize(readBytes);
+
+    LOGD("[COMPANION] GMS directory: %s", gmsDir.c_str());
+
+    std::string libPath = gmsDir + "/libinject.so";
+    #if defined(__aarch64__)
+        success &= FileUtils::copy(LIB_64, libPath);
+    #elif defined(__arm__)
+        success &= FileUtils::copy(LIB_32, libPath);
+    #endif
+    LOGD("[COMPANION] Injected library copied");
+
+    std::string dexPath = gmsDir + "/classes.dex";
+    success &= FileUtils::copy(DEX_PATH, dexPath, 0644);
+    LOGD("[COMPANION] Dex file copied");
+
+    std::string pifPath = gmsDir + "/pif.prop";
+    success &= (FileUtils::copy(CUSTOM_PIF, pifPath) || FileUtils::copy(DEFAULT_PIF, pifPath));
+    LOGD("[COMPANION] PIF file copied");
+
+    success &= Integrity::checkModule(MODULE_PROP, MODULE_PROP_CHECKSUM_HEX);
+    LOGD("[COMPANION] Module.prop verified");
+
+    FileUtils::robustWrite(fd, &success, sizeof(bool));
 }
 
 using namespace zygisk;
 
-class PlayIntegrityFix : public ModuleBase {
+class IntegrityModule : public ModuleBase {
 public:
-    void onLoad(Api *api_, JNIEnv *env_) override {
-        this->api = api_;
-        this->env = env_;
+    void onLoad(Api* api_, JNIEnv* env_) override {
+        api = api_;
+        env = env_;
     }
 
-    void preAppSpecialize(AppSpecializeArgs *args) override {
+    void preAppSpecialize(AppSpecializeArgs* args) override {
         api->setOption(DLCLOSE_MODULE_LIBRARY);
+        if (!args) return;
 
-        if (!args)
-            return;
+        if (access("/data/adb/pif_script_only", F_OK) == 0) return;
 
-        auto rawDir = env->GetStringUTFChars(args->app_data_dir, nullptr);
-        auto rawName = env->GetStringUTFChars(args->nice_name, nullptr);
-
-        std::string dir, name;
-
+        std::string appDir, appName;
+        const char* rawDir = env->GetStringUTFChars(args->app_data_dir, nullptr);
         if (rawDir) {
-            dir = rawDir;
+            appDir = rawDir;
             env->ReleaseStringUTFChars(args->app_data_dir, rawDir);
         }
 
+        const char* rawName = env->GetStringUTFChars(args->nice_name, nullptr);
         if (rawName) {
-            name = rawName;
+            appName = rawName;
             env->ReleaseStringUTFChars(args->nice_name, rawName);
         }
 
-        bool isGms = dir.ends_with("/com.google.android.gms");
-        bool isGmsUnstable = isGms && name == "com.google.android.gms.unstable";
-
-        if (!isGms)
-            return;
+        bool isGms = appDir.ends_with("/com.google.android.gms") || appDir.ends_with("/com.android.vending");
+        if (!isGms) return;
 
         api->setOption(FORCE_DENYLIST_UNMOUNT);
 
-        if (!isGmsUnstable)
+        gmsUnstable = (appName == DROIDGUARD_PKG);
+        vending = (appName == VENDING_PKG);
+        if (!gmsUnstable && !vending) {
+            api->setOption(DLCLOSE_MODULE_LIBRARY);
             return;
+        }
 
-        auto fd = api->connectCompanion();
+        int fd = api->connectCompanion();
+        int size = static_cast<int>(appDir.size());
+        FileUtils::robustWrite(fd, &size, sizeof(int));
+        FileUtils::robustWrite(fd, appDir.data(), size);
 
-        int size = static_cast<int>(dir.size());
-        xwrite(fd, &size, sizeof(int));
-
-        xwrite(fd, dir.data(), size);
-
-        xread(fd, &trickyStore, sizeof(bool));
-
-        xread(fd, &testSignedRom, sizeof(bool));
-
-        bool ok = false;
-        xread(fd, &ok, sizeof(bool));
-
+        bool result = false;
+        FileUtils::robustRead(fd, &result, sizeof(bool));
         close(fd);
 
-        if (ok)
-            gmsDir = dir;
+        if (result) targetDir = appDir;
     }
 
-    void postAppSpecialize(const AppSpecializeArgs *args) override {
-        if (gmsDir.empty())
-            return;
+    void postAppSpecialize(const AppSpecializeArgs*) override {
+        if (targetDir.empty()) return;
 
-        typedef bool (*InitFuncPtr)(JavaVM *, const std::string &, bool, bool);
+        std::string libPath = targetDir + "/libinject.so";
+        void* libHandle = dlopen(libPath.c_str(), RTLD_NOW);
+        if (!libHandle) return;
 
-        void *handle = dlopen((gmsDir + "/libinject.so").c_str(), RTLD_NOW);
+        typedef bool (*InitFunc)(JavaVM*, const std::string&, bool, bool);
+        auto init = reinterpret_cast<InitFunc>(dlsym(libHandle, "init"));
 
-        if (!handle)
-            return;
-
-        auto init_func = reinterpret_cast<InitFuncPtr>(dlsym(handle, "init"));
-
-        JavaVM *vm = nullptr;
+        JavaVM* vm = nullptr;
         env->GetJavaVM(&vm);
 
-        if (init_func(vm, gmsDir, trickyStore, testSignedRom)) {
-            LOGD("dlclose injected lib");
-            dlclose(handle);
+        if (init(vm, targetDir, gmsUnstable, vending)) {
+            LOGD("Closing injected library");
+            dlclose(libHandle);
         }
     }
 
-    void preServerSpecialize(ServerSpecializeArgs *args) override {
+    void preServerSpecialize(ServerSpecializeArgs*) override {
         api->setOption(DLCLOSE_MODULE_LIBRARY);
     }
 
 private:
-    Api *api = nullptr;
-    JNIEnv *env = nullptr;
-    std::string gmsDir;
-    bool trickyStore = false;
-    bool testSignedRom = false;
+    Api* api = nullptr;
+    JNIEnv* env = nullptr;
+    std::string targetDir;
+    bool gmsUnstable = false;
+    bool vending = false;
 };
 
-REGISTER_ZYGISK_MODULE(PlayIntegrityFix)
-
-REGISTER_ZYGISK_COMPANION(companion)
+REGISTER_ZYGISK_MODULE(IntegrityModule)
+REGISTER_ZYGISK_COMPANION(handleCompanion)
