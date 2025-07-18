@@ -1,6 +1,6 @@
 [versions]
-agp = "8.8.2"
-cxx = "27.0.12077973"
+agp = "8.11.1"
+cxx = "28.1.13356709"
 hiddenapibypass = "6.1"
 
 [libraries]
