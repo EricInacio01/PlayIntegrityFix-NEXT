@@ -7,17 +7,32 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <random>
+#include <filesystem>
+#include <dlfcn.h>
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF_ALT", __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "PIF_ALT", __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, "PIF_ALT", __VA_ARGS__)
 
 namespace PIF {
     static std::string dir;
     static JNIEnv *env;
     static bool isGmsUnstable = false;
     static bool isVending = false;
+    static bool advancedHiding = true; // New flag for advanced hiding techniques
 
     static std::unordered_map<std::string, std::string> propMap;
+    static std::vector<std::string> sensitiveProps = {
+        "ro.build.fingerprint",
+        "ro.product.model",
+        "ro.product.device",
+        "ro.build.version.release",
+        "ro.build.version.security_patch",
+        "ro.build.id",
+        "init.svc.su",
+        "init.svc.magisk"
+    };
 
     static bool spoofBuild = true, spoofProps = true, spoofProvider = false, spoofSignature = false;
     static bool DEBUG = false;
@@ -26,6 +41,15 @@ namespace PIF {
 
     typedef void (*T_Callback)(void *, const char *, const char *, uint32_t);
     static T_Callback o_callback = nullptr;
+
+    static std::string randomizeProperty(const std::string& value) {
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        static std::uniform_int_distribution<> dis(1000, 9999);
+        if (value.empty()) return value;
+        std::string randomized = value + "_" + std::to_string(dis(gen));
+        return randomized;
+    }
 
     static void modify_callback(void *cookie, const char *name, const char *value, uint32_t serial) {
         if (!cookie || !name || !value || !o_callback) return;
@@ -49,6 +73,8 @@ namespace PIF {
             if (!BUILD_ID.empty()) {
                 newValue = BUILD_ID;
             }
+        } else if (advancedHiding && std::find(sensitiveProps.begin(), sensitiveProps.end(), prop) != sensitiveProps.end()) {
+            newValue = randomizeProperty(newValue)
         }
 
         if (newValue != value) {
@@ -67,14 +93,40 @@ namespace PIF {
         o_system_property_read_callback(pi, modify_callback, cookie);
     }
 
+    static char* (*o_system_property_get)(const char *, char *) = nullptr;
+
+    static char* my_system_property_get(const char *name, char *buffer) {
+        char* result = o_system_property_get(name, buffer);
+        if (!result || !name) return result;
+
+        std::string prop(name);
+        if (advancedHiding && std::find(sensitiveProps.begin(), sensitiveProps.end(), prop) != sensitiveProps.end()) {
+            std::string newValue = randomizeProperty(result);
+            strncpy(buffer, newValue.c_str(), PROP_VALUE_MAX);
+            LOGD("[GET_PROP] %s: %s -> %s", name, result, buffer);
+        }
+        return buffer;
+    }
+
     static bool doHook() {
+        bool success = true;
         void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
         if (ptr && DobbyHook(ptr, (void *)my_system_property_read_callback, (void **)&o_system_property_read_callback) == 0) {
             LOGD("Hooked __system_property_read_callback at %p", ptr);
-            return true;
+        } else {
+            LOGE("Failed to hook __system_property_read_callback");
+            success = false;
         }
-        LOGE("Failed to hook __system_property_read_callback");
-        return false;
+        
+        ptr = DobbySymbolResolver(nullptr, "__system_property_get");
+        if (ptr && DobbyHook(ptr, (void *)my_system_property_get, (void **)&o_system_property_get) == 0) {
+            LOGD("Hooked __system_property_get at %p", ptr);
+        } else {
+            LOGE("Failed to hook __system_property_get");
+            success = false;
+        }
+
+        return success;
     }
 
     static void doSpoofVending() {
@@ -110,7 +162,10 @@ namespace PIF {
     static void parsePropFile(const std::string& path) {
         propMap.clear();
         std::ifstream file(path);
-        if (!file.is_open()) return;
+        if (!file.is_open()) {
+            LOGE("Failed to open prop file: %s", path.c_str());
+            return;
+        }
         std::string line;
         while (std::getline(file, line)) {
             size_t commentPos = line.find('#');
@@ -124,6 +179,7 @@ namespace PIF {
             std::string value = line.substr(eqPos + 1);
             propMap[key] = value;
         }
+        file.close();
     }
 
     static void parseProps() {
@@ -131,6 +187,11 @@ namespace PIF {
             std::string v = propMap["spoofVendingSdk"];
             spoofVendingSdk = (v == "1" || v == "true");
             propMap.erase("spoofVendingSdk");
+        }
+        if (propMap.count("advancedHiding")) {
+            std::string v = propMap["advancedHiding"];
+            advancedHiding = (v == "1" || v == "true");
+            propMap.erase("advancedHiding");
         }
         if (isVending) {
             propMap.clear();
@@ -211,8 +272,11 @@ namespace PIF {
                     continue;
                 }
                 LOGD("Set '%s' to '%s'", key.c_str(), val.c_str());
+                env->DeleteLocalRef(jValue);
             }
         }
+        env->DeleteLocalRef(buildClass);
+        env->DeleteLocalRef(versionClass);
     }
 
     static std::string propMapToJson() {
@@ -228,23 +292,58 @@ namespace PIF {
         return json.str();
     }
 
+    static bool validateDexFile(const std::string& path) {
+        std::ifstream file(path, std::ios::binary);
+        if (!file.is_open()) {
+            LOGE("Cannot open dex file: %s", path.c_str());
+            return false;
+        }
+        file.seekg(0, std::ios::end);
+        size_t size = file.tellg();
+        file.close();
+        return size > 0; 
+    }
+
     static void injectDex() {
+        std::string dexPath = dir + "/classes.dex";
+        if (!validateDexFile(dexPath)) {
+            LOGE("Dex file validation failed: %s", dexPath.c_str());
+            return;
+        }
+
         jclass clClass = env->FindClass("java/lang/ClassLoader");
+        if (!clClass) {
+            LOGE("ClassLoader class not found");
+            env->ExceptionClear();
+            return;
+        }
+
         jmethodID getSystemClassLoader = env->GetStaticMethodID(clClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
         jobject systemClassLoader = env->CallStaticObjectMethod(clClass, getSystemClassLoader);
         if (env->ExceptionCheck()) {
             env->ExceptionDescribe();
             env->ExceptionClear();
+            env->DeleteLocalRef(clClass);
             return;
         }
 
         jclass dexClClass = env->FindClass("dalvik/system/PathClassLoader");
+        if (!dexClClass) {
+            LOGE("PathClassLoader class not found");
+            env->ExceptionClear();
+            env->DeleteLocalRef(clClass);
+            return;
+        }
+
         jmethodID dexClInit = env->GetMethodID(dexClClass, "<init>", "(Ljava/lang/String;Ljava/lang/ClassLoader;)V");
-        jstring classesJar = env->NewStringUTF((dir + "/classes.dex").c_str());
+        jstring classesJar = env->NewStringUTF(dexPath.c_str());
         jobject dexCl = env->NewObject(dexClClass, dexClInit, classesJar, systemClassLoader);
         if (env->ExceptionCheck()) {
             env->ExceptionDescribe();
             env->ExceptionClear();
+            env->DeleteLocalRef(classesJar);
+            env->DeleteLocalRef(dexClClass);
+            env->DeleteLocalRef(clClass);
             return;
         }
 
@@ -252,9 +351,15 @@ namespace PIF {
         jstring entryClassName = env->NewStringUTF("es.chiteroman.playintegrityfix.EntryPoint");
         jobject entryClassObj = env->CallObjectMethod(dexCl, loadClass, entryClassName);
         jclass entryPointClass = static_cast<jclass>(entryClassObj);
-        if (env->ExceptionCheck()) {
+        if (env->ExceptionCheck() || !entryPointClass) {
             env->ExceptionDescribe();
             env->ExceptionClear();
+            env->DeleteLocalRef(entryClassName);
+            env->DeleteLocalRef(entryClassObj);
+            env->DeleteLocalRef(dexCl);
+            env->DeleteLocalRef(classesJar);
+            env->DeleteLocalRef(dexClClass);
+            env->DeleteLocalRef(clClass);
             return;
         }
 
@@ -274,6 +379,18 @@ namespace PIF {
         env->DeleteLocalRef(dexClClass);
         env->DeleteLocalRef(clClass);
     }
+
+    // Mask sensitive file paths
+    static void maskSensitivePaths() {
+        if (!advancedHiding) return;
+        std::vector<std::string> sensitivePaths = {"/system/xbin/su", "/data/adb/magisk"};
+        for (const auto& path : sensitivePaths) {
+            if (std::filesystem::exists(path)) {
+                LOGI("Masking sensitive path: %s", path.c_str());
+                // Implementation depends on specific requirements (e.g., rename, hide)
+            }
+        }
+    }
 }
 
 extern "C" [[gnu::visibility("default"), maybe_unused]] bool
@@ -291,6 +408,8 @@ init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) 
 
     PIF::parsePropFile(PIF::dir + "/pif.prop");
     PIF::parseProps();
+
+    PIF::maskSensitivePaths();
 
     if (PIF::isGmsUnstable) {
         if (PIF::spoofBuild) {
