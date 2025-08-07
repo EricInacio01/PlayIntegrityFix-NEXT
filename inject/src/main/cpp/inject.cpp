@@ -8,7 +8,7 @@
 #include <fstream>
 #include <sstream>
 #include <random>
-#include <filesystem>
+#include <unistd.h>
 #include <dlfcn.h>
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, "PIF_ALT", __VA_ARGS__)
@@ -20,7 +20,7 @@ namespace PIF {
     static JNIEnv *env;
     static bool isGmsUnstable = false;
     static bool isVending = false;
-    static bool advancedHiding = true; // New flag for advanced hiding techniques
+    static bool advancedHiding = true;
 
     static std::unordered_map<std::string, std::string> propMap;
     static std::vector<std::string> sensitiveProps = {
@@ -47,8 +47,7 @@ namespace PIF {
         static std::mt19937 gen(rd());
         static std::uniform_int_distribution<> dis(1000, 9999);
         if (value.empty()) return value;
-        std::string randomized = value + "_" + std::to_string(dis(gen));
-        return randomized;
+        return value + "_" + std::to_string(dis(gen));
     }
 
     static void modify_callback(void *cookie, const char *name, const char *value, uint32_t serial) {
@@ -61,20 +60,20 @@ namespace PIF {
             newValue = "stopped";
         } else if (prop == "sys.usb.state") {
             newValue = "mtp";
-        } else if (prop.ends_with("api_level")) {
+        } else if (prop.find("api_level") != std::string::npos) {
             if (!DEVICE_INITIAL_SDK_INT.empty()) {
                 newValue = DEVICE_INITIAL_SDK_INT;
             }
-        } else if (prop.ends_with(".security_patch")) {
+        } else if (prop.find(".security_patch") != std::string::npos) {
             if (!SECURITY_PATCH.empty()) {
                 newValue = SECURITY_PATCH;
             }
-        } else if (prop.ends_with(".build.id")) {
+        } else if (prop.find(".build.id") != std::string::npos) {
             if (!BUILD_ID.empty()) {
                 newValue = BUILD_ID;
             }
         } else if (advancedHiding && std::find(sensitiveProps.begin(), sensitiveProps.end(), prop) != sensitiveProps.end()) {
-            newValue = randomizeProperty(newValue)
+            newValue = randomizeProperty(newValue);
         }
 
         if (newValue != value) {
@@ -93,29 +92,42 @@ namespace PIF {
         o_system_property_read_callback(pi, modify_callback, cookie);
     }
 
-    static char* (*o_system_property_get)(const char *, char *) = nullptr;
+    static int (*o_system_property_get)(const char *, char *) = nullptr;
 
-    static char* my_system_property_get(const char *name, char *buffer) {
-        char* result = o_system_property_get(name, buffer);
-        if (!result || !name) return result;
+    static int my_system_property_get(const char *name, char *buffer) {
+        if (!name) return 0;
+        if (!buffer) return o_system_property_get(name, buffer);
+
+        char temp[PROP_VALUE_MAX];
+        int len = o_system_property_get(name, temp);
+        if (len <= 0) return len;
 
         std::string prop(name);
+        std::string currentValue(temp);
+        std::string newValue = currentValue;
+
         if (advancedHiding && std::find(sensitiveProps.begin(), sensitiveProps.end(), prop) != sensitiveProps.end()) {
-            std::string newValue = randomizeProperty(result);
-            strncpy(buffer, newValue.c_str(), PROP_VALUE_MAX);
-            LOGD("[GET_PROP] %s: %s -> %s", name, result, buffer);
+            newValue = randomizeProperty(currentValue);
+            if (newValue.length() >= PROP_VALUE_MAX) {
+                newValue.resize(PROP_VALUE_MAX - 1);
+            }
+            strcpy(buffer, newValue.c_str());
+            len = newValue.length();
+            LOGD("[GET_PROP] %s: %s -> %s", name, currentValue.c_str(), buffer);
+        } else {
+            strcpy(buffer, temp);
         }
-        return buffer;
+
+        return len;
     }
 
     static bool doHook() {
-        bool success = true;
         void *ptr = DobbySymbolResolver(nullptr, "__system_property_read_callback");
         if (ptr && DobbyHook(ptr, (void *)my_system_property_read_callback, (void **)&o_system_property_read_callback) == 0) {
             LOGD("Hooked __system_property_read_callback at %p", ptr);
         } else {
             LOGE("Failed to hook __system_property_read_callback");
-            success = false;
+            return false;
         }
         
         ptr = DobbySymbolResolver(nullptr, "__system_property_get");
@@ -123,35 +135,31 @@ namespace PIF {
             LOGD("Hooked __system_property_get at %p", ptr);
         } else {
             LOGE("Failed to hook __system_property_get");
-            success = false;
+            return false;
         }
 
-        return success;
+        return true;
     }
 
     static void doSpoofVending() {
         int requestSdk = 32;
         jclass buildVersionClass = env->FindClass("android/os/Build$VERSION");
         if (!buildVersionClass) {
-            LOGE("Build.VERSION class not found");
             env->ExceptionClear();
             return;
         }
         jfieldID sdkIntFieldID = env->GetStaticFieldID(buildVersionClass, "SDK_INT", "I");
         if (!sdkIntFieldID) {
-            LOGE("SDK_INT field not found");
             env->ExceptionClear();
             env->DeleteLocalRef(buildVersionClass);
             return;
         }
         int oldValue = env->GetStaticIntField(buildVersionClass, sdkIntFieldID);
-        int targetSdk = std::min(oldValue, requestSdk);
+        int targetSdk = (oldValue < requestSdk) ? oldValue : requestSdk;
         if (oldValue != targetSdk) {
             env->SetStaticIntField(buildVersionClass, sdkIntFieldID, targetSdk);
             if (env->ExceptionCheck()) {
-                env->ExceptionDescribe();
                 env->ExceptionClear();
-                LOGE("Failed to set SDK_INT");
             } else {
                 LOGD("[SDK_INT] %d -> %d", oldValue, targetSdk);
             }
@@ -184,13 +192,11 @@ namespace PIF {
 
     static void parseProps() {
         if (propMap.count("spoofVendingSdk")) {
-            std::string v = propMap["spoofVendingSdk"];
-            spoofVendingSdk = (v == "1" || v == "true");
+            spoofVendingSdk = (propMap["spoofVendingSdk"] == "1" || propMap["spoofVendingSdk"] == "true");
             propMap.erase("spoofVendingSdk");
         }
         if (propMap.count("advancedHiding")) {
-            std::string v = propMap["advancedHiding"];
-            advancedHiding = (v == "1" || v == "true");
+            advancedHiding = (propMap["advancedHiding"] == "1" || propMap["advancedHiding"] == "true");
             propMap.erase("advancedHiding");
         }
         if (isVending) {
@@ -202,46 +208,67 @@ namespace PIF {
             propMap.erase("DEVICE_INITIAL_SDK_INT");
         }
         if (propMap.count("spoofBuild")) {
-            std::string v = propMap["spoofBuild"];
-            spoofBuild = (v == "1" || v == "true");
+            spoofBuild = (propMap["spoofBuild"] == "1" || propMap["spoofBuild"] == "true");
             propMap.erase("spoofBuild");
         }
         if (propMap.count("spoofProvider")) {
-            std::string v = propMap["spoofProvider"];
-            spoofProvider = (v == "1" || v == "true");
+            spoofProvider = (propMap["spoofProvider"] == "1" || propMap["spoofProvider"] == "true");
             propMap.erase("spoofProvider");
         }
         if (propMap.count("spoofProps")) {
-            std::string v = propMap["spoofProps"];
-            spoofProps = (v == "1" || v == "true");
+            spoofProps = (propMap["spoofProps"] == "1" || propMap["spoofProps"] == "true");
             propMap.erase("spoofProps");
         }
         if (propMap.count("spoofSignature")) {
-            std::string v = propMap["spoofSignature"];
-            spoofSignature = (v == "1" || v == "true");
+            spoofSignature = (propMap["spoofSignature"] == "1" || propMap["spoofSignature"] == "true");
             propMap.erase("spoofSignature");
         }
         if (propMap.count("DEBUG")) {
-            std::string v = propMap["DEBUG"];
-            DEBUG = (v == "1" || v == "true");
+            DEBUG = (propMap["DEBUG"] == "1" || propMap["DEBUG"] == "true");
             propMap.erase("DEBUG");
         }
         if (propMap.count("FINGERPRINT")) {
             std::string fingerprint = propMap["FINGERPRINT"];
+            std::vector<std::string> colonParts;
             std::istringstream iss(fingerprint);
-            std::string token;
-            std::vector<std::string> parts;
-            while (std::getline(iss, token, '/')) {
-                std::istringstream subIss(token);
-                std::string subToken;
-                while (std::getline(subIss, subToken, ':')) {
-                    parts.push_back(subToken);
+            std::string part;
+            while (std::getline(iss, part, ':')) {
+                colonParts.push_back(part);
+            }
+            if (colonParts.size() >= 3) {
+                std::vector<std::string> brandParts;
+                std::istringstream issBrand(colonParts[0]);
+                while (std::getline(issBrand, part, '/')) {
+                    brandParts.push_back(part);
+                }
+                if (brandParts.size() >= 3) {
+                    propMap["BRAND"] = brandParts[0];
+                    propMap["PRODUCT"] = brandParts[1];
+                    propMap["DEVICE"] = brandParts[2];
+                }
+                std::vector<std::string> versionParts;
+                std::istringstream issVersion(colonParts[1]);
+                while (std::getline(issVersion, part, '/')) {
+                    versionParts.push_back(part);
+                }
+                if (versionParts.size() >= 3) {
+                    propMap["RELEASE"] = versionParts[0];
+                    propMap["ID"] = versionParts[1];
+                    propMap["INCREMENTAL"] = versionParts[2];
+                }
+                std::vector<std::string> typeParts;
+                std::istringstream issType(colonParts[2]);
+                while (std::getline(issType, part, '/')) {
+                    typeParts.push_back(part);
+                }
+                if (!typeParts.empty()) {
+                    propMap["TYPE"] = typeParts[0];
+                    if (typeParts.size() > 1) {
+                        propMap["TAGS"] = typeParts[1];
+                    }
                 }
             }
-            static const char* keys[] = {"BRAND", "PRODUCT", "DEVICE", "RELEASE", "ID", "INCREMENTAL", "TYPE", "TAGS"};
-            for (size_t i = 0; i < 8; ++i) {
-                propMap[keys[i]] = (i < parts.size()) ? parts[i] : "";
-            }
+            propMap.erase("FINGERPRINT");
         }
         if (propMap.count("SECURITY_PATCH")) {
             SECURITY_PATCH = propMap["SECURITY_PATCH"];
@@ -269,9 +296,9 @@ namespace PIF {
                 env->SetStaticObjectField(buildClass, fieldID, jValue);
                 if (env->ExceptionCheck()) {
                     env->ExceptionClear();
-                    continue;
+                } else {
+                    LOGD("Set '%s' to '%s'", key.c_str(), val.c_str());
                 }
-                LOGD("Set '%s' to '%s'", key.c_str(), val.c_str());
                 env->DeleteLocalRef(jValue);
             }
         }
@@ -293,15 +320,8 @@ namespace PIF {
     }
 
     static bool validateDexFile(const std::string& path) {
-        std::ifstream file(path, std::ios::binary);
-        if (!file.is_open()) {
-            LOGE("Cannot open dex file: %s", path.c_str());
-            return false;
-        }
-        file.seekg(0, std::ios::end);
-        size_t size = file.tellg();
-        file.close();
-        return size > 0; 
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        return file.is_open() && file.tellg() > 0;
     }
 
     static void injectDex() {
@@ -313,7 +333,6 @@ namespace PIF {
 
         jclass clClass = env->FindClass("java/lang/ClassLoader");
         if (!clClass) {
-            LOGE("ClassLoader class not found");
             env->ExceptionClear();
             return;
         }
@@ -321,7 +340,6 @@ namespace PIF {
         jmethodID getSystemClassLoader = env->GetStaticMethodID(clClass, "getSystemClassLoader", "()Ljava/lang/ClassLoader;");
         jobject systemClassLoader = env->CallStaticObjectMethod(clClass, getSystemClassLoader);
         if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
             env->ExceptionClear();
             env->DeleteLocalRef(clClass);
             return;
@@ -329,7 +347,6 @@ namespace PIF {
 
         jclass dexClClass = env->FindClass("dalvik/system/PathClassLoader");
         if (!dexClClass) {
-            LOGE("PathClassLoader class not found");
             env->ExceptionClear();
             env->DeleteLocalRef(clClass);
             return;
@@ -339,7 +356,6 @@ namespace PIF {
         jstring classesJar = env->NewStringUTF(dexPath.c_str());
         jobject dexCl = env->NewObject(dexClClass, dexClInit, classesJar, systemClassLoader);
         if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
             env->ExceptionClear();
             env->DeleteLocalRef(classesJar);
             env->DeleteLocalRef(dexClClass);
@@ -352,7 +368,6 @@ namespace PIF {
         jobject entryClassObj = env->CallObjectMethod(dexCl, loadClass, entryClassName);
         jclass entryPointClass = static_cast<jclass>(entryClassObj);
         if (env->ExceptionCheck() || !entryPointClass) {
-            env->ExceptionDescribe();
             env->ExceptionClear();
             env->DeleteLocalRef(entryClassName);
             env->DeleteLocalRef(entryClassObj);
@@ -367,7 +382,6 @@ namespace PIF {
         jstring jsonStr = env->NewStringUTF(propMapToJson().c_str());
         env->CallStaticVoidMethod(entryPointClass, entryInit, jsonStr, spoofProvider, spoofSignature, spoofBuild);
         if (env->ExceptionCheck()) {
-            env->ExceptionDescribe();
             env->ExceptionClear();
         }
 
@@ -380,14 +394,12 @@ namespace PIF {
         env->DeleteLocalRef(clClass);
     }
 
-    // Mask sensitive file paths
     static void maskSensitivePaths() {
         if (!advancedHiding) return;
         std::vector<std::string> sensitivePaths = {"/system/xbin/su", "/data/adb/magisk"};
         for (const auto& path : sensitivePaths) {
-            if (std::filesystem::exists(path)) {
+            if (access(path.c_str(), F_OK) == 0) {
                 LOGI("Masking sensitive path: %s", path.c_str());
-                // Implementation depends on specific requirements (e.g., rename, hide)
             }
         }
     }
@@ -399,7 +411,6 @@ init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) 
     PIF::isVending = isVending;
 
     if (vm->GetEnv(reinterpret_cast<void **>(&PIF::env), JNI_VERSION_1_6) != JNI_OK) {
-        LOGE("[INJECT] JNI_ERR!");
         return true;
     }
 
@@ -419,7 +430,7 @@ init(JavaVM *vm, const std::string &gmsDir, bool isGmsUnstable, bool isVending) 
         if (PIF::spoofProvider || PIF::spoofSignature) {
             PIF::injectDex();
         } else {
-            LOGD("[INJECT] Dex file won't be injected due to spoofProvider and spoofSignature being false");
+            LOGD("[INJECT] Dex injection skipped");
         }
 
         if (PIF::spoofProps) {
