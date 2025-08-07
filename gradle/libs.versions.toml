@@ -6,6 +6,7 @@ hiddenapibypass = "6.1"
 [libraries]
 cxx = { group = "org.lsposed.libcxx", name = "libcxx", version.ref = "cxx" }
 hiddenapibypass = { group = "org.lsposed.hiddenapibypass", name = "hiddenapibypass", version.ref = "hiddenapibypass" }
+playintegrityfix = { group = "com.chiteroman", name = "playintegrityfix", version.ref = "playintegrityfix" }
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "agp" }
