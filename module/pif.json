@@ -1,6 +1,12 @@
 {
-  "FINGERPRINT": "google/oriole_beta/oriole:16/BP22.250221.015/13278879:user/release-keys",
+  "FINGERPRINT": "google/tangorpro_beta/tangorpro:16/BP31.250610.004/13769805:user/release-keys",
   "MANUFACTURER": "Google",
-  "MODEL": "Pixel 6",
-  "SECURITY_PATCH": "2025-03-05"
+  "MODEL": "Pixel Tablet",
+  "SECURITY_PATCH": "2025-07-05",
+  "spoofBuild": true,
+  "spoofProvider": false,
+  "spoofProps": false,
+  "spoofSignature": false,
+  "DEBUG": true,
+  "spoofVendingSdk": false
 }
