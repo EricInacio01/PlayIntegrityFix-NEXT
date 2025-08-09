@@ -7,7 +7,7 @@ Created by chiteroman, forked by me. This module aims to ensure valid attestatio
 
 To use this module, you need to have [TrickyStore](https://github.com/5ec1cff/TrickyStore/releases) pre-installed. You also need one of the following (latest versions):
 
-- [Magisk](https://github.com/topjohnwu/Magisk) with Zygisk enabled.
+- [Magisk](https://github.com/topjohnwu/Magisk) with [ReZygisk](https://github.com/PerformanC/ReZygisk) and Zygisk disabled in Magisk settings
 - [KernelSU](https://github.com/tiann/KernelSU) with [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext) or [ReZygisk](https://github.com/PerformanC/ReZygisk) module installed.
 - [KernelSU Next](https://github.com/KernelSU-Next/KernelSU-Next) with [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext) or [ReZygisk](https://github.com/PerformanC/ReZygisk) module installed.
 - [APatch](https://github.com/bmax121/APatch) with [Zygisk Next](https://github.com/Dr-TSNG/ZygiskNext) or [ReZygisk](https://github.com/PerformanC/ReZygisk) module installed.
@@ -64,7 +64,7 @@ Here are some personal recommendations for modules you can use alongside PIF-Nex
 
 > You can also follow the [PIF-Next](https://t.me/bunkerdoquim/26)  guide (you will be redirected) to Telegram for better certification with this module.
 
-Thanks to [Joaquim](https://t.me/joaquimiguel) for creating the guide and also these warnings.
+Thanks to [Joaquim](https://t.me/bunkerdoquim) for creating the guide and also these warnings.
 
 
 
