@@ -1,0 +1,3 @@
+system=prop
+boot=2025-08-05
+vendor=2025-08-05

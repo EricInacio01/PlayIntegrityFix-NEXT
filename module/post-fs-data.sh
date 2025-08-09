@@ -27,6 +27,9 @@ resetprop_if_diff ro.boot.realmebootstate green
 # OnePlus
 resetprop_if_diff ro.is_ever_orange 0
 
+# PixelProject
+resetprop --delete persist.sys.pihooks.first_api_level
+
 # Microsoft
 for PROP in $(resetprop | grep -oE 'ro.*.build.tags'); do
     resetprop_if_diff "$PROP" release-keys
@@ -61,5 +64,3 @@ fi
 if [ -f /data/system/gms_certified_props.json ] && [ ! "$(resetprop persist.sys.spoof.gms)" = "false" ]; then
 	resetprop persist.sys.spoof.gms false
 fi
-
-

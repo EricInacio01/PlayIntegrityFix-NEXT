@@ -1,0 +1,6 @@
+com.google.android.gms.unstable!
+com.android.vending!
+com.google.android.apps.walletnfcrel!
+com.google.android.gms!
+com.google.android.gsf!
+io.github.vvb2060.keyattestation!
