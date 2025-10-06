@@ -1,0 +1,11 @@
+FINGERPRINT=google/oriole_beta/oriole:Baklava/BP41.250725.006/13939570:user/release-keys
+MANUFACTURER=Google
+MODEL=Pixel 6
+SECURITY_PATCH=2025-08-05
+spoofBuild=true
+spoofProps=false
+spoofProvider=false
+spoofSignature=false
+spoofVendingBuild=true
+spoofVendingSdk=false
+DEBUG=false

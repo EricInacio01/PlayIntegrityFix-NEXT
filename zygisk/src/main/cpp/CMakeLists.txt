@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.30.5)
 
 project("zygisk")
 
@@ -8,4 +8,4 @@ find_package(cxx REQUIRED CONFIG)
 
 link_libraries(cxx::cxx)
 
-add_library(zygisk SHARED zygisk.cpp)
+add_library(zygisk SHARED zygisk.cpp local_cxa_atexit_finalize_impl/atexit.cpp)

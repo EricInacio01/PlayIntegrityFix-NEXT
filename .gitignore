@@ -12,8 +12,5 @@ local.properties
 *.so
 *.zip
 .vscode
+.vscodium
 checksum.h
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/module/zygisk/*

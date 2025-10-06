@@ -1,130 +1,92 @@
+import { exec, spawn, toast } from "./assets/kernelsu.js";
+
+let scriptOnly = false;
 let shellRunning = false;
 let initialPinchDistance = null;
 let currentFontSize = 14;
+let model = null, product = null;
 const MIN_FONT_SIZE = 8;
 const MAX_FONT_SIZE = 24;
 
-// Novo toggle spoofBuild adicionado
-const spoofBuildToggle = document.getElementById('toggle-spoofBuild');
-const spoofProviderToggle = document.getElementById('toggle-spoofProvider');
-const spoofPropsToggle = document.getElementById('toggle-spoofProps');
-const spoofSignatureToggle = document.getElementById('toggle-spoofSignature');
-const debugToggle = document.getElementById('toggle-debug');
-const spoofVendingSdkToggle = document.getElementById('toggle-sdk-vending');
-
-// Atualizado com novo toggle spoofBuild
 const spoofConfig = [
-    { container: "spoofBuild-toggle-container", toggle: spoofBuildToggle, type: 'spoofBuild' },
-    { container: "spoofProvider-toggle-container", toggle: spoofProviderToggle, type: 'spoofProvider' },
-    { container: "spoofProps-toggle-container", toggle: spoofPropsToggle, type: 'spoofProps' },
-    { container: "spoofSignature-toggle-container", toggle: spoofSignatureToggle, type: 'spoofSignature' },
-    { container: "debug-toggle-container", toggle: debugToggle, type: 'DEBUG' },
-    { container: "sdk-vending-toggle-container", toggle: spoofVendingSdkToggle, type: 'spoofVendingSdk' }
+    { config: 'spoofBuild', label: 'Spoof Build', isAdvanced: false },
+    { config: 'spoofVendingBuild', label: 'Spoof Build (Play Store)', isAdvanced: false },
+    { config: 'spoofProps', label: 'Spoof Props', isAdvanced: true },
+    { config: 'spoofProvider', label: 'Spoof Provider', isAdvanced: true },
+    { config: 'spoofSignature', label: 'Spoof Signature', isAdvanced: true },
+    { config: 'spoofVendingSdk', label: 'Spoof Sdk (Play Store)', isAdvanced: true }
 ];
 
-/**
- * Executes a shell command with KernelSU privileges
- * @param {string} command - The shell command to execute
- * @returns {Promise<string>} A promise that resolves with stdout content
- * @throws {Error} If command execution fails with:
- *                 Non-zero exit code (includes stderr in error message)
- */
-function exec(command) {
-    return new Promise((resolve, reject) => {
-        const callbackFuncName = `exec_callback_${Date.now()}`;
-        window[callbackFuncName] = (errno, stdout, stderr) => {
-            delete window[callbackFuncName];
-            if (errno !== 0) {
-                reject(new Error(`Command failed with exit code ${errno}: ${stderr}`));
-                return;
-            }
-            resolve(stdout);
-        };
-        try {
-            ksu.exec(command, "{}", callbackFuncName);
-        } catch (error) {
-            delete window[callbackFuncName];
-            reject(error);
-        }
-    });
-}
+// Apeend spoofConfig button
+function appendSpoofConfigToggles() {
+    const advancedDiv = document.getElementById('advanced');
+    const buttonBox = document.querySelector('.button-box');
+    if (!buttonBox) return;
 
-/**
- * Spawns shell process with ksu spawn
- * @param {string} command - The command to execute
- * @param {string[]} [args=[]] - Array of arguments to pass to the command
- * @returns {Object} A child process object with:
- *                   stdout: Stream for standard output
- *                   stderr: Stream for standard error
- *                   stdin: Stream for standard input
- *                   on(event, listener): Attach event listener ('exit', 'error')
- *                   emit(event, ...args): Emit events internally
- */
-function spawn(command, args = []) {
-    const child = {
-        listeners: {},
-        stdout: { listeners: {} },
-        stderr: { listeners: {} },
-        stdin: { listeners: {} },
-        on: function(event, listener) {
-            if (!this.listeners[event]) this.listeners[event] = [];
-            this.listeners[event].push(listener);
-        },
-        emit: function(event, ...args) {
-            if (this.listeners[event]) {
-                this.listeners[event].forEach(listener => listener(...args));
-            }
-        }
-    };
-    ['stdout', 'stderr', 'stdin'].forEach(io => {
-        child[io].on = child.on.bind(child[io]);
-        child[io].emit = child.emit.bind(child[io]);
+    spoofConfig.forEach((item, idx) => {
+        const { config, label, isAdvanced } = item;
+        const container = document.createElement('div');
+        container.className = `toggle-list ripple-element${isAdvanced ? ' advanced-option' : ''}`;
+        container.id = `${config}-container`;
+        container.innerHTML = `
+            <div class="toggle${idx === spoofConfig.length - 1 ? ' last-toggle' : ''}">
+                <span class="toggle-text">${label}</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="${config}-toggle" disabled>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        `;
+        buttonBox.insertBefore(container, advancedDiv);
     });
-    const callbackName = `spawn_callback_${Date.now()}`;
-    window[callbackName] = child;
-    child.on("exit", () => delete window[callbackName]);
-    try {
-        ksu.spawn(command, JSON.stringify(args), "{}", callbackName);
-    } catch (error) {
-        child.emit("error", error);
-        delete window[callbackName];
-    }
-    return child;
+
+    applyButtonEventListeners();
 }
 
 // Apply button event listeners
 function applyButtonEventListeners() {
     const fetchButton = document.getElementById('fetch');
-    const previewFpToggle = document.getElementById('preview-fp-toggle-container');
+    const viewButton = document.getElementById('view');
+    const scriptOnlyToggle = document.getElementById('script-only-container');
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
     const terminal = document.querySelector('.output-terminal-content');
+    const githubBtn = document.getElementById('github-btn');
 
     fetchButton.addEventListener('click', runAction);
-    previewFpToggle.addEventListener('click', async () => {
-        if (shellRunning) return;
-        shellRunning = true;
-        try {
-            const isChecked = document.getElementById('toggle-preview-fp').checked;
-            await exec(`sed -i 's/^FORCE_PREVIEW=.*$/FORCE_PREVIEW=${isChecked ? 0 : 1}/' /data/adb/modules/playintegrityfix/autopif.sh`);
-            appendToOutput(`[+] Switched fingerprint to ${isChecked ? 'beta' : 'preview'}`);
-            loadPreviewFingerprintConfig();
-        } catch (error) {
-            appendToOutput("[!] Failed to switch fingerprint type");
-            console.error('Failed to switch fingerprint type:', error);
+    viewButton.addEventListener('click', async () => {
+        const result = await exec(`
+            if [ -f /data/adb/pif.prop ]; then
+                cat /data/adb/pif.prop
+            else
+                cat /data/adb/modules/playintegrityfix/pif.prop
+            fi
+        `);
+        if (result.errno === 0) {
+            const lines = result.stdout.split('\n').filter(line => line.trim() !== '');
+            lines.forEach(line => appendToOutput(line));
+            appendToOutput("");
+        } else {
+            appendToOutput(`[!] Failed to read pif.prop: ${result.stderr}`, true);
         }
-        shellRunning = false;
+    });
+
+    scriptOnlyToggle.addEventListener('click', async () => {
+        await exec(`${scriptOnly ? 'rm -rf /data/adb/pif_script_only' : 'touch /data/adb/pif_script_only'} || true
+            killall com.google.android.gms.unstable || true
+            killall com.android.vending || true
+        `);
+        loadScriptOnlyConfig();
+        appendToOutput(`[+] ${scriptOnly ? 'Disabled' : 'Enabled'} script only mode.`);
     });
 
     advanced.addEventListener('click', () => {
         document.querySelectorAll('.advanced-option').forEach(option => {
             option.style.display = 'flex';
+            option.offsetHeight;
+            option.classList.add('advanced-show');
         });
         advanced.style.display = 'none';
-        const lists = Array.from(document.querySelectorAll('.toggle-list'));
-        lists.forEach(list => list.style.borderBottom = '1px solid var(--border-color)');
-        const visibleLists = lists.filter(list => getComputedStyle(list).display !== 'none');
-        if (visibleLists.length > 0) visibleLists[visibleLists.length - 1].style.borderBottom = 'none';
     });
 
     clearButton.addEventListener('click', () => {
@@ -158,88 +120,174 @@ function applyButtonEventListeners() {
     terminal.addEventListener('touchend', () => {
         initialPinchDistance = null;
     });
+
+    githubBtn.onclick = () => {
+        const link = "https://github.com/KOWX712/PlayIntegrityFix/releases/latest";
+        toast("Redirecting to " + link);
+        setTimeout(() => {
+            exec(`am start -a android.intent.action.VIEW -d ${link}`);
+        }, 100);
+    }
 }
 
 // Function to load the version from module.prop
 async function loadVersionFromModuleProp() {
     const versionElement = document.getElementById('version-text');
-    try {
-        const version = await exec("grep '^version=' /data/adb/modules/playintegrityfix/module.prop | cut -d'=' -f2");
-        versionElement.textContent = version.trim();
-    } catch (error) {
-        appendToOutput("[!] Failed to read version from module.prop");
-        console.error("Failed to read version from module.prop:", error);
+    const { errno, stdout, stderr } = await exec("grep '^version=' /data/adb/modules/playintegrityfix/module.prop | cut -d'=' -f2");
+    if (errno === 0) {
+        versionElement.textContent = stdout.trim();
+    } else {
+        appendToOutput(`[!] Failed to read version from module.prop: ${stderr}`, true);
+        console.error("Failed to read version from module.prop:", stderr);
+    }
+    checkDescription();
+}
+
+// Check description
+async function checkDescription() {
+    const unofficialOverlay = document.getElementById('unofficial-warning');
+    const { errno } = await exec("grep -q 'tampered' /data/adb/modules/playintegrityfix/module.prop");
+    if (typeof ksu !== 'undefined' && errno === 0) {
+        unofficialOverlay.style.display = 'flex';
     }
 }
 
-// Atualizada para ler spoofBuild
+// Function to load spoof config
 async function loadSpoofConfig() {
     try {
-        const pifJson = await exec(`cat /data/adb/modules/playintegrityfix/pif.json`);
-        const config = JSON.parse(pifJson);
-        // Novo campo spoofBuild
-        spoofBuildToggle.checked = config.spoofBuild;
-        spoofProviderToggle.checked = config.spoofProvider;
-        spoofPropsToggle.checked = config.spoofProps;
-        spoofSignatureToggle.checked = config.spoofSignature;
-        debugToggle.checked = config.DEBUG;
-        spoofVendingSdkToggle.checked = config.spoofVendingSdk;
+        const { errno, stdout, stderr } = await exec(`
+            if [ -f /data/adb/pif.prop ]; then
+                cat /data/adb/pif.prop
+            else
+                cat /data/adb/modules/playintegrityfix/pif.prop
+            fi
+        `);
+        if (errno !== 0) throw new Error(stderr);
+
+        const pifMap = parsePropToMap(stdout);
+
+        spoofConfig.forEach(item => {
+            const toggle = document.getElementById(`${item.config}-toggle`);
+            toggle.checked = pifMap[item.config];
+        });
+
+        if (model === null) model = pifMap.MODEL;
     } catch (error) {
-        appendToOutput("[!] Failed to load spoof config");
+        appendToOutput(`[!] Failed to load spoof config: ${error}`, true);
+        appendToOutput('[!] Warning: Do not use third party tools to fetch pif.prop');
+        resetPifProp();
         console.error(`Failed to load spoof config:`, error);
     }
 }
 
-// Function to setup spoof config button
-function setupSpoofConfigButton(container, toggle, type) {
-    document.getElementById(container).addEventListener('click', async () => {
-        if (shellRunning) return;
-        shellRunning = true;
-        try {
-            const pifFile = await exec(`[ ! -f /data/adb/modules/playintegrityfix/pif.json ] || echo "/data/adb/modules/playintegrityfix/pif.json"`);
-            const files = pifFile.split('\n').filter(line => line.trim() !== '');
-            for (const line of files) {
-                await updateSpoofConfig(toggle, type, line.trim());
+// Reset pif.prop to default
+function resetPifProp() {
+    fetch('https://raw.githubusercontent.com/KOWX712/PlayIntegrityFix/inject_s/module/pif.prop')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-            exec(`killall com.google.android.gms.unstable || true && killall com.android.vending || true`);
-            loadSpoofConfig();
-            appendToOutput(`[+] Changed ${type} config to ${!toggle.checked}`);
-        } catch (error) {
-            appendToOutput(`[!] Failed to update ${type} config`);
-            console.error(`Failed to update ${type} config:`, error);
-        }
-        shellRunning = false;
+            return response.text();
+        })
+        .then(async text => {
+            const pifProp = text.trim();
+            const { errno, stderr } = await exec(`
+                echo '${pifProp}' > /data/adb/modules/playintegrityfix/pif.prop
+                rm -f /data/adb/pif.prop || true
+            `);
+            if (errno === 0) {
+                appendToOutput(`[+] Successfully reset pif.prop`);
+            } else {
+                appendToOutput(`[!] Failed to reset pif.prop: ${stderr}`, true);
+            }
+        })
+        .catch(error => {
+            appendToOutput(`[!] Failed to reset pif.prop: ${error.message}`);
+        });
+}
+
+// Function to setup spoof config button
+function setupSpoofConfigButton() {
+    spoofConfig.forEach(item => {
+        const container = item.config + "-container";
+        const toggle = document.getElementById(`${item.config}-toggle`);
+
+        document.getElementById(container).addEventListener('click', async () => {
+            if (shellRunning) return;
+            muteToggle();
+            const { errno, stdout, stderr } = await exec(`
+                [ ! -f /data/adb/modules/playintegrityfix/pif.prop ] || echo "/data/adb/modules/playintegrityfix/pif.prop"
+                [ ! -f /data/adb/pif.prop ] || echo "/data/adb/pif.prop"
+            `);
+            if (errno === 0) {
+                const isSuccess = await updateSpoofConfig(toggle, item.config, stdout);
+                if (isSuccess) {
+                    loadSpoofConfig();
+                    appendToOutput(`[+] ${toggle.checked ? "Disabled" : "Enabled"} ${item.config}`);
+                } else {
+                    appendToOutput(`[!] Failed to ${toggle.checked ? "disable" : "enable"} ${item.config}`);
+                }
+                await exec(`
+                    killall com.google.android.gms.unstable || true
+                    killall com.android.vending || true
+                `);
+            } else {
+                console.error(`Failed to find pif.prop:`, stderr);
+            }
+            unmuteToggle();
+        });
     });
 }
 
-// Function to update spoof config
+/**
+ * Update pif.prop
+ * @param {HTMLInputElement} toggle - config toggle of pif.prop
+ * @param {string} type - prop key to change
+ * @param {string} pifFile - Path of pif.prop list
+ * @returns {Promise<boolean>}
+ */
 async function updateSpoofConfig(toggle, type, pifFile) {
-    const isChecked = toggle.checked;
-    const pifJson = await exec(`cat ${pifFile}`);
-    const config = JSON.parse(pifJson);
-    config[type] = !isChecked;
-    const newPifJson = JSON.stringify(config, null, 2);
-    await exec(`echo '${newPifJson}' > ${pifFile}`);
-}
+    let isSuccess = true;
+    const files = pifFile.split('\n').filter(line => line.trim() !== '');
+    
+    for (const pifFile of files) {
+        try {
+            // read
+            const { stdout } = await exec(`cat ${pifFile}`);
+            const config = parsePropToMap(stdout);
 
-// Function to load preview fingerprint config
-async function loadPreviewFingerprintConfig() {
-    try {
-        const previewFpToggle = document.getElementById('toggle-preview-fp');
-        const isChecked = await exec(`grep -o 'FORCE_PREVIEW=[01]' /data/adb/modules/playintegrityfix/action.sh | cut -d'=' -f2`);
-        if (isChecked === '0') {
-            previewFpToggle.checked = false;
-        } else {
-            previewFpToggle.checked = true;
+            // update field
+            config[type] = !toggle.checked;
+            const prop = parseMapToProp(config);
+
+            // write
+            const { errno } = await exec(`echo '${prop}' > ${pifFile}`);
+            if (errno !== 0) isSuccess = false;
+
+            // reminder
+            if (config.spoofVendingBuild && config.spoofVendingSdk) {
+                appendToOutput('[!] spoofVendingSdk will not take effect when spoofVendingBuild is enabled.');
+            }
+
+            // reminder
+            const signature = await exec('unzip -l /system/etc/security/otacerts.zip | grep -oE "testkey|releasekey"');
+            if (signature.errno === 0) {
+                if (signature.stdout.trim() === "testkey" && !config.spoofSignature) {
+                    appendToOutput('[!] Unsigned ROM detected, enable spoofSignature to fix.');
+                } else if (signature.stdout.trim() === "releasekey" && config.spoofSignature) {
+                    appendToOutput('[+] Signed ROM detected, enabling spoofSignature might not be useful.');
+                }
+            }
+        } catch (error) {
+            console.error(`Failed to update ${pifFile}:`, error);
+            isSuccess = false;
         }
-    } catch (error) {
-        appendToOutput("[!] Failed to load preview fingerprint config");
-        console.error("Failed to load preview fingerprint config:", error);
     }
+    return isSuccess;
 }
 
 // Function to append element in output terminal
-function appendToOutput(content) {
+function appendToOutput(content, error = false) {
     const output = document.querySelector('.output-terminal-content');
     if (content.trim() === "") {
         const lineBreak = document.createElement('br');
@@ -247,7 +295,8 @@ function appendToOutput(content) {
     } else {
         const line = document.createElement('p');
         line.className = 'output-content';
-        line.innerHTML = content.replace(/ /g, ' ');
+        line.innerHTML = content.replace(/ /g, '&nbsp;');
+        if (error) line.style.color = 'red';
         output.appendChild(line);
     }
     output.scrollTop = output.scrollHeight;
@@ -256,19 +305,89 @@ function appendToOutput(content) {
 // Function to run the script and display its output
 function runAction() {
     if (shellRunning) return;
-    shellRunning = true;
-    const scriptOutput = spawn("sh", ["/data/adb/modules/playintegrityfix/action.sh"]);
+    muteToggle();
+    let opts = {};
+    if (model && product) opts = { env: { MODEL: `"${model}"`, PRODUCT: `"${product}"`} };
+    const scriptOutput = spawn("sh", ["/data/adb/modules/playintegrityfix/autopif.sh"], opts);
     scriptOutput.stdout.on('data', (data) => appendToOutput(data));
-    scriptOutput.stderr.on('data', (data) => appendToOutput(data));
+    scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif.sh: ${data}`, true));
     scriptOutput.on('exit', () => {
         appendToOutput("");
-        shellRunning = false;
+        unmuteToggle();
     });
     scriptOutput.on('error', () => {
-        appendToOutput("[!] Error: Fail to execute action.sh");
+        appendToOutput("[!] Error: Fail to execute autopif.sh", true);
         appendToOutput("");
-        shellRunning = false;
+        unmuteToggle();
     });
+}
+
+function updateAutopif() {
+    muteToggle();
+    const scriptOutput = spawn("sh", ["/data/adb/modules/playintegrityfix/autopif_ota.sh"]);
+    scriptOutput.stdout.on('data', (data) => appendToOutput(data));
+    scriptOutput.stderr.on('data', (data) => appendToOutput(`[!] Error executing autopif_ota.sh: ${data}`, true));
+    scriptOutput.on('exit', () => {
+        unmuteToggle();
+    });
+    scriptOutput.on('error', () => {
+        appendToOutput("[!] Error: Fail to execute autopif_ota.sh", true);
+        appendToOutput("");
+        unmuteToggle();
+    });
+}
+
+function muteToggle() {
+    shellRunning = true;
+    document.querySelectorAll('.toggle-list').forEach(toggle => {
+        toggle.classList.add('toggle-muted');
+    });
+}
+
+function unmuteToggle() {
+    shellRunning = false;
+    document.querySelectorAll('.toggle-list').forEach(toggle => {
+        toggle.classList.remove('toggle-muted');
+    });
+}
+
+/**
+ * Parse prop to map
+ * @param {string} prop - prop string
+ * @returns {Object} - map of prop
+ */
+function parsePropToMap(prop) {
+    const map = {};
+    if (!prop || typeof prop !== 'string') return map;
+    const lines = prop.split(/\r?\n/);
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx === -1) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        let value = trimmed.slice(eqIdx + 1).trim();
+        if (value === 'true' || value === 'false') value = value === 'true';
+        else if (/^\d+$/.test(value)) value = parseInt(value, 10);
+        else if (/^\d+\.\d+$/.test(value)) value = parseFloat(value);
+        map[key] = value;
+    }
+    return map;
+}
+
+/**
+ * Parse map to prop
+ * @param {Object} map - map of prop
+ * @returns {string} - prop string
+ */
+function parseMapToProp(map) {
+    if (!map || typeof map !== 'object') return '';
+    return Object.entries(map)
+        .map(([key, value]) => {
+            if (typeof value === 'boolean') return `${key}=${value ? 'true' : 'false'}`;
+            return `${key}=${value}`;
+        })
+        .join('\n');
 }
 
 /**
@@ -346,6 +465,127 @@ async function checkMMRL() {
     }
 }
 
+function loadScriptOnlyConfig() {
+    exec('[ -e "/data/adb/pif_script_only" ]')
+        .then(({ errno }) => {
+            scriptOnly = errno === 0;
+            document.querySelectorAll('.toggle-list').forEach(toggle => {
+                if (toggle.classList.contains('advanced-option')
+                    && !toggle.classList.contains('advanced-show')
+                    || toggle.classList.contains('script-only')
+                ) return;
+                toggle.style.display = scriptOnly ? 'none' : 'flex';
+            });
+
+            const scriptOnlyContainer = document.getElementById('script-only-container');
+            scriptOnlyContainer.querySelector('input[type=checkbox]').checked = scriptOnly
+            scriptOnlyContainer.querySelector('.toggle').classList.toggle('last-toggle', scriptOnly);
+            scriptOnlyContainer.querySelector('.toggle').classList.toggle('first-toggle', scriptOnly);
+        });
+}
+
+/**
+ * fetch available model and array, retrieve from localStorage if last updated less than 1 day
+ * @returns {Object} - An object contain an array of model and an array of product
+ */
+function getDeviceList() {
+    const cacheKey = 'PIF_devices_list';
+    const tsKey = 'PIF_devices_list_timestamp';
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let cachedList = localStorage.getItem(cacheKey);
+    let cachedTs = localStorage.getItem(tsKey);
+
+    return new Promise(async (resolve) => {
+        if (cachedList && cachedTs && (now - parseInt(cachedTs, 10) < oneDayMs)) {
+            try {
+                resolve(JSON.parse(cachedList));
+                return;
+            } catch (e) {
+                // fallback to refresh if parse fails
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        let listJson = "";
+        const result = spawn('sh', ["/data/adb/modules/playintegrityfix/autopif.sh", "--list"]);
+        result.stdout.on('data', (data) => {
+            if (data.trim() === "" || data.startsWith('[')) return;
+            listJson += data.trim();
+        });
+        result.on('exit', () => {
+            if (listJson !== "") {
+                localStorage.setItem(cacheKey, listJson);
+                localStorage.setItem(tsKey, String(Date.now()));
+                try {
+                    resolve(JSON.parse(listJson));
+                } catch (e) {
+                    appendToOutput(`[!] Error parsing devices list: ${e}`, true);
+                    resolve(null);
+                }
+            } else {
+                resolve(null);
+            }
+        });
+    });
+}
+
+let selectorListener = false;
+
+// Render available device list to select menu
+function setupDeviceList() {
+    const selectMenu = document.getElementById('select-devices');
+
+    if (!selectorListener) {
+        selectMenu.addEventListener('change', () => {
+            if (selectMenu.value === 'refresh') {
+                localStorage.removeItem('PIF_devices_list');
+                localStorage.removeItem('PIF_devices_list_timestamp');
+                selectMenu.innerHTML = '<option value=loading>Loading</option>';
+                selectMenu.value = 'loading'
+                setupDeviceList();
+                return;
+            }
+
+            const selected = selectMenu.options[selectMenu.selectedIndex];
+            model = selected.value || null;
+            product = selected.getAttribute('data-product') || null;
+        });
+        selectorListener = true;
+    }
+
+    // Render device list
+    getDeviceList().then(deviceList => {
+        selectMenu.innerHTML = `
+            <option value="random">Random</option>
+            <option value="refresh">Refresh List</option>
+        `;
+
+        if (!deviceList || !deviceList.model || !deviceList.product) return;
+        for (let i = 0; i < deviceList.model.length; i++) {
+            const option = document.createElement('option');
+            option.value = deviceList.model[i];
+            option.textContent = deviceList.model[i];
+            option.setAttribute('data-product', deviceList.product[i] || '');
+            selectMenu.appendChild(option);
+        }
+
+        // Select previous model
+        if (model && deviceList.model.includes(model)) {
+            selectMenu.value = model;
+            selectMenu.dispatchEvent(new Event('change'));
+        }
+    });
+}
+
+function checkSeLinuxStatus() {
+    exec('getenforce').then((result) => {
+        if (result.errno !== 0) return;
+        if (result.stdout.trim() === 'Permissive') {
+            appendToOutput("[!] SELinux status is permissive.", true)
+        }
+    });
+}
+
 function getDistance(touch1, touch2) {
     return Math.hypot(
         touch1.clientX - touch2.clientX,
@@ -361,12 +601,13 @@ function updateFontSize(newSize) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     checkMMRL();
+    appendSpoofConfigToggles();
     loadVersionFromModuleProp();
     await loadSpoofConfig();
-    spoofConfig.forEach(config => {
-        setupSpoofConfigButton(config.container, config.toggle, config.type);
-    });
-    loadPreviewFingerprintConfig();
-    applyButtonEventListeners();
+    setupSpoofConfigButton();
+    loadScriptOnlyConfig();
+    setupDeviceList();
     applyRippleEffect();
+    updateAutopif();
+    checkSeLinuxStatus();
 });

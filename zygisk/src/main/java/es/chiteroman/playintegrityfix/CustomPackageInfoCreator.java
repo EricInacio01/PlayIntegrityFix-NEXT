@@ -16,6 +16,7 @@ public final class CustomPackageInfoCreator implements Parcelable.Creator<Packag
     }
 
     @Override
+    @SuppressWarnings("deprecation")
     public PackageInfo createFromParcel(Parcel source) {
         PackageInfo packageInfo = originalCreator.createFromParcel(source);
         if (packageInfo.packageName.equals("android")) {

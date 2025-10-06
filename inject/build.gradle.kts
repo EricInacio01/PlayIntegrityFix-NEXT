@@ -1,10 +1,14 @@
+@file:Suppress("UnstableApiUsage")
+
 plugins {
     alias(libs.plugins.android.library)
 }
 
 android {
     namespace = "es.chiteroman.inject"
-    compileSdk = 35
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
+    buildToolsVersion = "36.1.0"
 
     buildFeatures {
         prefab = true
@@ -30,23 +34,28 @@ android {
                 )
 
                 arguments(
-                    "-DCMAKE_BUILD_TYPE=MinSizeRel",
-                    "-DANDROID_STL=none"
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DANDROID_STL=none",
+                    "-DCMAKE_JOB_POOLS=compile=${Runtime.getRuntime().availableProcessors()}",
+                    "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
+                    "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 )
 
-                cFlags(
-                    "-std=c23",
-                    "-fvisibility=hidden",
-                    "-fvisibility-inlines-hidden"
-                )
-
-                cppFlags(
-                    "-std=c++26",
+                val commonFlags = setOf(
                     "-fno-exceptions",
                     "-fno-rtti",
                     "-fvisibility=hidden",
-                    "-fvisibility-inlines-hidden"
+                    "-fvisibility-inlines-hidden",
+                    "-ffunction-sections",
+                    "-fdata-sections",
+                    "-w"
                 )
+
+                cFlags += "-std=c23"
+                cFlags += commonFlags
+
+                cppFlags += "-std=c++26"
+                cppFlags += commonFlags
             }
         }
     }
@@ -63,6 +72,7 @@ android {
     externalNativeBuild {
         cmake {
             path("src/main/cpp/CMakeLists.txt")
+            version = "3.30.5+"
         }
     }
 }

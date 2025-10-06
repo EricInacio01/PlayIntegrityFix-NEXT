@@ -1,6 +1,9 @@
-[submodule "Dobby"]
-	path = app/src/main/cpp/Dobby
-	url = https://github.com/JingMatrix/Dobby
-[submodule "json"]
-	path = app/src/main/cpp/json
-	url = https://github.com/nlohmann/json
+[submodule "inject/src/main/cpp/Dobby"]
+	path = inject/src/main/cpp/Dobby
+	url = https://github.com/JingMatrix/Dobby.git
+[submodule "zygisk/src/main/cpp/local_cxa_atexit_finalize_impl"]
+	path = zygisk/src/main/cpp/local_cxa_atexit_finalize_impl
+	url = https://github.com/5ec1cff/local_cxa_atexit_finalize_impl.git
+[submodule "inject/src/main/cpp/local_cxa_atexit_finalize_impl"]
+	path = inject/src/main/cpp/local_cxa_atexit_finalize_impl
+	url = https://github.com/5ec1cff/local_cxa_atexit_finalize_impl.git

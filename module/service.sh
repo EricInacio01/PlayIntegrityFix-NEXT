@@ -1,11 +1,6 @@
 MODPATH="${0%/*}"
 . "$MODPATH"/common_func.sh
 
-# Security Patches
-novo_patch="2025-08-05"
-resetprop -n ro.build.version.security_patch "$novo_patch"
-resetprop -n ro.vendor.build.security_patch "$novo_patch"
-
 # Conditional sensitive properties
 
 # Magisk Recovery Mode

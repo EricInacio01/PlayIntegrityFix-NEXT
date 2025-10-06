@@ -1,10 +1,37 @@
+@file:Suppress("UnstableApiUsage")
+
+import java.util.zip.CRC32
+
 plugins {
     alias(libs.plugins.android.application)
 }
 
+tasks.register("generateModulePropChecksum") {
+    val propFile = project.rootDir.resolve("module/module.prop")
+    val checksumHeader = project.projectDir.resolve("src/main/cpp/checksum.h")
+
+    doLast {
+        val bytes = propFile.readBytes()
+        val crc = CRC32()
+        crc.update(bytes)
+        val checksum = crc.value
+        val hex = checksum.toString(16)
+        checksumHeader.writeText("""
+            #pragma once
+            #define MODULE_PROP_CHECKSUM_HEX "$hex"
+        """.trimIndent())
+    }
+}
+
+tasks.named("preBuild") {
+    dependsOn("generateModulePropChecksum")
+}
+
 android {
     namespace = "es.chiteroman.playintegrityfix"
-    compileSdk = 35
+    compileSdk = 36
+    ndkVersion = "28.2.13676358"
+    buildToolsVersion = "36.1.0"
 
     buildFeatures {
         prefab = true
@@ -28,23 +55,28 @@ android {
                 )
 
                 arguments(
-                    "-DCMAKE_BUILD_TYPE=MinSizeRel",
-                    "-DANDROID_STL=none"
+                    "-DCMAKE_BUILD_TYPE=Release",
+                    "-DANDROID_STL=none",
+                    "-DCMAKE_JOB_POOLS=compile=${Runtime.getRuntime().availableProcessors()}",
+                    "-DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
+                    "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
                 )
 
-                cFlags(
-                    "-std=c23",
-                    "-fvisibility=hidden",
-                    "-fvisibility-inlines-hidden"
-                )
-
-                cppFlags(
-                    "-std=c++26",
+                val commonFlags = setOf(
                     "-fno-exceptions",
                     "-fno-rtti",
                     "-fvisibility=hidden",
-                    "-fvisibility-inlines-hidden"
+                    "-fvisibility-inlines-hidden",
+                    "-ffunction-sections",
+                    "-fdata-sections",
+                    "-w"
                 )
+
+                cFlags += "-std=c23"
+                cFlags += commonFlags
+
+                cppFlags += "-std=c++26"
+                cppFlags += commonFlags
             }
         }
     }
@@ -65,6 +97,7 @@ android {
     externalNativeBuild {
         cmake {
             path("src/main/cpp/CMakeLists.txt")
+            version = "3.30.5+"
         }
     }
 }

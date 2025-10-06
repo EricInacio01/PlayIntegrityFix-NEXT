@@ -7,4 +7,4 @@ if [ -f /data/system/gms_certified_props.json ]; then
 	resetprop -p --delete persist.sys.spoof.gms
 fi
 
-# EOF
+# Persist props
