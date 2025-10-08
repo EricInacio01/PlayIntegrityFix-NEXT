@@ -17,7 +17,7 @@ const spoofConfig = [
     { config: 'spoofVendingSdk', label: 'Spoof Sdk (Play Store)', isAdvanced: true }
 ];
 
-// Apeend spoofConfig button
+// Append spoofConfig button
 function appendSpoofConfigToggles() {
     const advancedDiv = document.getElementById('advanced');
     const buttonBox = document.querySelector('.button-box');
@@ -51,7 +51,6 @@ function applyButtonEventListeners() {
     const advanced = document.getElementById('advanced');
     const clearButton = document.querySelector('.clear-terminal');
     const terminal = document.querySelector('.output-terminal-content');
-    const githubBtn = document.getElementById('github-btn');
 
     fetchButton.addEventListener('click', runAction);
     viewButton.addEventListener('click', async () => {
@@ -120,14 +119,6 @@ function applyButtonEventListeners() {
     terminal.addEventListener('touchend', () => {
         initialPinchDistance = null;
     });
-
-    githubBtn.onclick = () => {
-        const link = "https://github.com/KOWX712/PlayIntegrityFix/releases/latest";
-        toast("Redirecting to " + link);
-        setTimeout(() => {
-            exec(`am start -a android.intent.action.VIEW -d ${link}`);
-        }, 100);
-    }
 }
 
 // Function to load the version from module.prop
@@ -139,16 +130,6 @@ async function loadVersionFromModuleProp() {
     } else {
         appendToOutput(`[!] Failed to read version from module.prop: ${stderr}`, true);
         console.error("Failed to read version from module.prop:", stderr);
-    }
-    checkDescription();
-}
-
-// Check description
-async function checkDescription() {
-    const unofficialOverlay = document.getElementById('unofficial-warning');
-    const { errno } = await exec("grep -q 'tampered' /data/adb/modules/playintegrityfix/module.prop");
-    if (typeof ksu !== 'undefined' && errno === 0) {
-        unofficialOverlay.style.display = 'flex';
     }
 }
 
@@ -174,36 +155,8 @@ async function loadSpoofConfig() {
         if (model === null) model = pifMap.MODEL;
     } catch (error) {
         appendToOutput(`[!] Failed to load spoof config: ${error}`, true);
-        appendToOutput('[!] Warning: Do not use third party tools to fetch pif.prop');
-        resetPifProp();
         console.error(`Failed to load spoof config:`, error);
     }
-}
-
-// Reset pif.prop to default
-function resetPifProp() {
-    fetch('https://raw.githubusercontent.com/KOWX712/PlayIntegrityFix/inject_s/module/pif.prop')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.text();
-        })
-        .then(async text => {
-            const pifProp = text.trim();
-            const { errno, stderr } = await exec(`
-                echo '${pifProp}' > /data/adb/modules/playintegrityfix/pif.prop
-                rm -f /data/adb/pif.prop || true
-            `);
-            if (errno === 0) {
-                appendToOutput(`[+] Successfully reset pif.prop`);
-            } else {
-                appendToOutput(`[!] Failed to reset pif.prop: ${stderr}`, true);
-            }
-        })
-        .catch(error => {
-            appendToOutput(`[!] Failed to reset pif.prop: ${error.message}`);
-        });
 }
 
 // Function to setup spoof config button
