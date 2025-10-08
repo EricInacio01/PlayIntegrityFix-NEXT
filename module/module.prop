@@ -1,7 +1,7 @@
 id=playintegrityfix
-name=Play Integrity Fix [INJECT]
-version=v4.3-inject-s
-versionCode=43
-author=chiteroman, KOWX712
-description=Universal modular fix for Play Integrity on devices running Android 8-16
-updateJson=https://raw.githubusercontent.com/KOWX712/PlayIntegrityFix/inject_s/update.json
+name=PlayIntegrityFix-NEXT
+version=v4.0-beta
+versionCode=40
+author=@ericinacio, chiteroman, KOWX712
+description=This fork aims to ensure valid attestation with the new PlayIntegrity API rules running Android 10-16.
+updateJson=https://github.com/EricInacio01/PlayIntegrityFix-NEXT/blob/main/update.json
